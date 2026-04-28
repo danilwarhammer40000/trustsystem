@@ -46,7 +46,11 @@ def atomic_write(data):
     os.makedirs(os.path.dirname(CREDENTIALS_PATH), exist_ok=True)
 
     with lock:
-        with tempfile.NamedTemporaryFile("w", delete=False, dir=os.path.dirname(CREDENTIALS_PATH)) as tmp:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            delete=False,
+            dir=os.path.dirname(CREDENTIALS_PATH)
+        ) as tmp:
 
             for client in data.get("client", []):
                 tmp.write("[[client]]\n")
@@ -58,20 +62,16 @@ def atomic_write(data):
         os.replace(tmp_path, CREDENTIALS_PATH)
 
 
-# -------------------------
-# FULL REBUILD
-# -------------------------
 def rebuild_credentials_from_db(users):
     clients = []
-
     now = datetime.utcnow()
 
     for u in users:
         if u.get("status") != "active":
             continue
 
-        # expiration check
         exp = u.get("expires_at")
+
         if exp:
             try:
                 exp_dt = datetime.fromisoformat(exp)
