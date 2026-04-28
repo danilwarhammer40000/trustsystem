@@ -1,38 +1,105 @@
-from datetime import datetime, timedelta
-from core.db import get_connection
+import os
+import tempfile
+from datetime import datetime
+from filelock import FileLock
 
-def create_credential(user_id, username, password, days):
-    conn = get_connection()
-    cur = conn.cursor()
+CREDENTIALS_PATH = "/opt/trusttunnel/credentials.toml"
+LOCK_PATH = "/opt/trusttunnel/credentials.lock"
 
-    expires = datetime.now() + timedelta(days=days)
+lock = FileLock(LOCK_PATH, timeout=10)
 
-    cur.execute("""
-        INSERT INTO credentials (user_id, username, password, expires_at, status)
-        VALUES (?, ?, ?, ?, 'active')
-    """, (user_id, username, password, expires))
 
-    conn.commit()
-    conn.close()
+def load_credentials():
+    if not os.path.exists(CREDENTIALS_PATH):
+        return {"client": []}
 
-def get_user_credentials(user_id):
-    conn = get_connection()
-    cur = conn.cursor()
+    clients = []
 
-    cur.execute("SELECT * FROM credentials WHERE user_id=?", (user_id,))
-    rows = cur.fetchall()
+    try:
+        with open(CREDENTIALS_PATH, "r") as f:
+            current = {}
 
-    conn.close()
-    return rows
+            for line in f:
+                line = line.strip()
 
-def delete_expired():
-    conn = get_connection()
-    cur = conn.cursor()
+                if line == "[[client]]":
+                    if current:
+                        clients.append(current)
+                    current = {}
 
-    cur.execute("""
-        DELETE FROM credentials
-        WHERE expires_at < CURRENT_TIMESTAMP
-    """)
+                elif line.startswith("username"):
+                    current["username"] = line.split("=", 1)[1].strip().strip('"')
 
-    conn.commit()
-    conn.close()
+                elif line.startswith("password"):
+                    current["password"] = line.split("=", 1)[1].strip().strip('"')
+
+            if current:
+                clients.append(current)
+
+        return {"client": clients}
+
+    except Exception:
+        return {"client": []}
+
+
+def atomic_write(data):
+    os.makedirs(os.path.dirname(CREDENTIALS_PATH), exist_ok=True)
+
+    with lock:
+        with tempfile.NamedTemporaryFile("w", delete=False, dir=os.path.dirname(CREDENTIALS_PATH)) as tmp:
+
+            for client in data.get("client", []):
+                tmp.write("[[client]]\n")
+                tmp.write(f'username = "{client["username"]}"\n')
+                tmp.write(f'password = "{client["password"]}"\n\n')
+
+            tmp_path = tmp.name
+
+        os.replace(tmp_path, CREDENTIALS_PATH)
+
+
+# -------------------------
+# FULL REBUILD
+# -------------------------
+def rebuild_credentials_from_db(users):
+    clients = []
+
+    now = datetime.utcnow()
+
+    for u in users:
+        if u.get("status") != "active":
+            continue
+
+        # expiration check
+        exp = u.get("expires_at")
+        if exp:
+            try:
+                exp_dt = datetime.fromisoformat(exp)
+                if exp_dt < now:
+                    continue
+            except Exception:
+                continue
+
+        username = u.get("username")
+        password = u.get("password")
+
+        if not username or not password:
+            continue
+
+        clients.append({
+            "username": username,
+            "password": password
+        })
+
+    atomic_write({"client": clients})
+
+
+def remove_user_from_credentials(username):
+    data = load_credentials()
+
+    data["client"] = [
+        c for c in data.get("client", [])
+        if c.get("username") != username
+    ]
+
+    atomic_write(data)
