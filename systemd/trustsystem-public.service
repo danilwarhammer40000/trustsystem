@@ -1,1 +1,18 @@
+[Unit]
+Description=TrustSystem Public Bot
+After=network.target
 
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/trustsystem
+
+ExecStart=/opt/trustsystem/venv/bin/python run_public.py
+
+Restart=always
+RestartSec=5
+
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
