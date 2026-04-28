@@ -1,0 +1,12 @@
+[Unit]
+Description=Trust Admin Bot
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/opt/trustsystem
+ExecStart=/opt/trustsystem/venv/bin/python -m bots.admin.bot
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
