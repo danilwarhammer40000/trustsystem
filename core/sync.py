@@ -1,10 +1,10 @@
 import subprocess
 from filelock import FileLock
 
-from core.repository import users_repo
+from core.db import load_users
 from core.credentials import rebuild_credentials_from_db
 
-LOCK_PATH = "/opt/trusttunnel/sync.lock"
+LOCK_PATH = "/opt/trustsystem/storage/sync.lock"
 TRUSTTUNNEL_SERVICE = "trusttunnel.service"
 
 lock = FileLock(LOCK_PATH, timeout=20)
@@ -18,11 +18,11 @@ def restart_trusttunnel():
     )
 
     if result.returncode != 0:
-        raise RuntimeError(f"trusttunnel restart failed: {result.stderr}")
+        raise RuntimeError(result.stderr)
 
 
 def full_sync():
     with lock:
-        users = users_repo.get_all()
+        users = load_users()
         rebuild_credentials_from_db(users)
         restart_trusttunnel()
