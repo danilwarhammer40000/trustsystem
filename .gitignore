@@ -1,1 +1,16 @@
+# env
+.env
 
+# data
+storage/users.json
+storage/*.lock
+
+# system
+__pycache__/
+*.pyc
+
+# logs
+logs/
+
+# system artifacts
+*.log
