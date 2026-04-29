@@ -1,0 +1,10 @@
+[Unit]
+Description=Run expire check every hour
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1h
+Unit=trustsystem-expire.service
+
+[Install]
+WantedBy=timers.target
