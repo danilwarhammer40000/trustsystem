@@ -1,13 +1,18 @@
+import os
 import subprocess
-from filelock import FileLock
 from datetime import datetime
-from core.db import load_users, save_users
 
-from core.db import load_users
+from filelock import FileLock
+
+from core.db import load_users, save_users
 from core.credentials import rebuild_credentials_from_db
+
 
 LOCK_PATH = "/opt/trustsystem/storage/sync.lock"
 TRUSTTUNNEL_SERVICE = "trusttunnel.service"
+
+# гарантируем что папка существует
+os.makedirs(os.path.dirname(LOCK_PATH), exist_ok=True)
 
 lock = FileLock(LOCK_PATH, timeout=20)
 
