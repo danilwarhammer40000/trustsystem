@@ -4,6 +4,7 @@ from aiogram.fsm.context import FSMContext
 
 from services.user_service import create_user
 from services.vpn_service import activate_access
+from services.vpn_service import get_vpn_link
 
 router = Router()
 
@@ -34,10 +35,16 @@ async def process_username(message: types.Message, state: FSMContext):
     # активируем trial access
     access = activate_access(username, plan="trial")
 
-    await message.answer(
-        f"✅ Created\n"
-        f"👤 {username}\n"
-        f"⏳ {access['expires_at']}\n"
-    )
+activate_access(username, plan="trial")
+
+vpn = get_vpn_link(username)
+
+await message.answer(
+    f"✅ Access activated\n\n"
+    f"👤 {vpn['username']}\n"
+    f"🔑 {vpn['password']}\n"
+    f"🌐 {vpn['link']}\n"
+    f"⏳ {vpn['expires_at']}"
+)
 
     await state.clear()
