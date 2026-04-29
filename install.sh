@@ -4,6 +4,7 @@ set -euo pipefail
 echo "=== TrustSystem Installer ==="
 
 PROJECT_DIR="/opt/trustsystem"
+REPO_URL="https://github.com/danilwarhammer40000/trustsystem.git"
 
 # -------------------------
 # DEPENDENCIES
@@ -29,7 +30,7 @@ if [ -d "$PROJECT_DIR/.git" ]; then
 else
     echo "[INFO] Cloning repo..."
     rm -rf "$PROJECT_DIR"
-    git clone https://github.com/danilwarhammer40000/trustsystem.git "$PROJECT_DIR"
+    git clone "$REPO_URL" "$PROJECT_DIR"
     cd "$PROJECT_DIR"
 fi
 
@@ -55,40 +56,15 @@ echo "[4/7] Configuration..."
 ENV_FILE="$PROJECT_DIR/.env"
 
 is_valid_env() {
-    grep -q "ADMIN_BOT_TOKEN=" "$ENV_FILE" 2>/dev/null && \
-    grep -q "PUBLIC_BOT_TOKEN=" "$ENV_FILE" 2>/dev/null && \
-    grep -q "ADMIN_TG_ID=" "$ENV_FILE" 2>/dev/null && \
-    grep -q "DOMAIN=" "$ENV_FILE" 2>/dev/null
+    [ -f "$ENV_FILE" ] || return 1
+    grep -q "ADMIN_BOT_TOKEN=" "$ENV_FILE" && \
+    grep -q "PUBLIC_BOT_TOKEN=" "$ENV_FILE" && \
+    grep -q "ADMIN_TG_ID=" "$ENV_FILE" && \
+    grep -q "DOMAIN=" "$ENV_FILE"
 }
 
-if [ -f "$ENV_FILE" ] && is_valid_env; then
+create_env() {
     echo ""
-    echo "⚠️ Valid .env detected"
-    echo "1) Rewrite config"
-    echo "2) Keep current"
-    echo "3) Exit"
-    read -r -p "Choose: " CHOICE
-
-    case "$CHOICE" in
-        1) ;;
-        2)
-            echo "[INFO] Keeping config"
-            ;;
-        3)
-            exit 0
-            ;;
-        *)
-            echo "Invalid option"
-            exit 1
-            ;;
-    esac
-else
-    echo "[INFO] No valid config found, creating new..."
-    CHOICE=1
-fi
-
-if [ ! -f "$ENV_FILE" ] || [ "$CHOICE" = "1" ]; then
-
     read -r -p "ADMIN_BOT_TOKEN: " ADMIN_BOT_TOKEN
     read -r -p "PUBLIC_BOT_TOKEN: " PUBLIC_BOT_TOKEN
     read -r -p "ADMIN_TG_ID: " ADMIN_TG_ID
@@ -104,24 +80,25 @@ EOF
 
     chmod 600 "$ENV_FILE"
     echo "[OK] .env saved"
-fi
+}
 
-if [ ! -f "$ENV_FILE" ] || [ "${CHOICE:-1}" = "1" ]; then
+if is_valid_env; then
+    echo ""
+    echo "⚠️ Valid .env detected"
+    echo "1) Rewrite config"
+    echo "2) Keep current"
+    echo "3) Exit"
+    read -r -p "Choose: " CHOICE
 
-    read -r -p "ADMIN_BOT_TOKEN: " ADMIN_BOT_TOKEN
-    read -r -p "PUBLIC_BOT_TOKEN: " PUBLIC_BOT_TOKEN
-    read -r -p "ADMIN_TG_ID: " ADMIN_TG_ID
-    read -r -p "DOMAIN: " DOMAIN
-
-    cat > "$ENV_FILE" <<EOF
-ADMIN_BOT_TOKEN=$ADMIN_BOT_TOKEN
-PUBLIC_BOT_TOKEN=$PUBLIC_BOT_TOKEN
-ADMIN_TG_ID=$ADMIN_TG_ID
-DOMAIN=$DOMAIN
-PYTHONPATH=$PROJECT_DIR
-EOF
-
-    chmod 600 "$ENV_FILE"
+    case "$CHOICE" in
+        1) create_env ;;
+        2) echo "[INFO] Keeping config" ;;
+        3) exit 0 ;;
+        *) echo "Invalid option"; exit 1 ;;
+    esac
+else
+    echo "[INFO] No valid config found"
+    create_env
 fi
 
 # -------------------------
@@ -133,15 +110,14 @@ install_unit () {
     local name=$1
     local src="$PROJECT_DIR/systemd/$name"
 
-    if [ -f "$src" ]; then
-        echo "[INFO] Installing $name"
-        cp "$src" "/etc/systemd/system/$name"
-        chmod 644 "/etc/systemd/system/$name"
-        systemctl enable "$name"
-    else
+    if [ ! -f "$src" ]; then
         echo "[ERROR] Missing $name"
         exit 1
     fi
+
+    echo "[INFO] Installing $name"
+    cp "$src" "/etc/systemd/system/$name"
+    chmod 644 "/etc/systemd/system/$name"
 }
 
 install_unit "trustsystem-admin.service"
@@ -149,12 +125,17 @@ install_unit "trustsystem-public.service"
 install_unit "trustsystem-expire.service"
 install_unit "trustsystem-expire.timer"
 
+systemctl daemon-reexec
+systemctl daemon-reload
+
+systemctl enable trustsystem-admin.service
+systemctl enable trustsystem-public.service
+systemctl enable trustsystem-expire.timer
+
 # -------------------------
 # START
 # -------------------------
 echo "[6/7] Starting services..."
-
-systemctl daemon-reload
 
 systemctl restart trustsystem-admin.service
 systemctl restart trustsystem-public.service
@@ -174,6 +155,7 @@ systemctl list-timers | grep trustsystem || true
 
 echo ""
 echo "DONE"
+echo ""
 echo "Logs:"
 echo "journalctl -u trustsystem-admin -f"
 echo "journalctl -u trustsystem-public -f"
