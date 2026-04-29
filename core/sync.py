@@ -1,5 +1,7 @@
 import subprocess
 from filelock import FileLock
+from datetime import datetime
+from core.db import load_users, save_users
 
 from core.db import load_users
 from core.credentials import rebuild_credentials_from_db
@@ -24,5 +26,29 @@ def restart_trusttunnel():
 def full_sync():
     with lock:
         users = load_users()
+
+        now = datetime.utcnow()
+        changed = False
+
+        for u in users:
+            if u.get("status") != "active":
+                continue
+
+            exp = u.get("expires_at")
+
+            if not exp:
+                continue
+
+            try:
+                exp_dt = datetime.fromisoformat(exp)
+                if exp_dt < now:
+                    u["status"] = "inactive"
+                    changed = True
+            except:
+                continue
+
+        if changed:
+            save_users(users)
+
         rebuild_credentials_from_db(users)
         restart_trusttunnel()
