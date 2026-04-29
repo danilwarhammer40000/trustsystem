@@ -1,8 +1,18 @@
 from datetime import datetime, timedelta
+import secrets
+import string
 
 from core.db import load_users, save_users
-from core.credentials import rebuild_credentials_from_db
 from core.sync import full_sync
+
+
+# =========================
+# HELPERS
+# =========================
+
+def _generate_password(length: int = 12):
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 # =========================
@@ -37,19 +47,24 @@ def get_user_by_tg(tg_id: int):
 # CREATE
 # =========================
 
-def create_user(tg_id: int, username: str, password: str, plan: str = "trial"):
+def create_user(tg_id: int, username: str):
     users = load_users()
 
-    # check duplicate tg
     for u in users:
         if str(u.get("telegram_id")) == str(tg_id):
             raise ValueError("USER_ALREADY_EXISTS")
+
+    for u in users:
+        if u.get("username") == username:
+            raise ValueError("USERNAME_TAKEN")
+
+    password = _generate_password()
 
     user = {
         "username": username,
         "password": password,
         "telegram_id": tg_id,
-        "plan": plan,
+        "plan": "trial",
         "status": "inactive",
         "trial_used": False,
         "created_at": datetime.utcnow().isoformat(),
@@ -58,8 +73,6 @@ def create_user(tg_id: int, username: str, password: str, plan: str = "trial"):
 
     users.append(user)
     save_users(users)
-
-    full_sync()
 
     return user
 
@@ -127,44 +140,25 @@ def activate_paid(username: str, days: int):
 # =========================
 
 def extend_user(username: str, days: int):
-    users = load_users()
-
-    for u in users:
-        if u.get("username") == username:
-
-            base = datetime.utcnow()
-
-            if u.get("expires_at"):
-                try:
-                    old = datetime.fromisoformat(u["expires_at"])
-                    if old > base:
-                        base = old
-                except:
-                    pass
-
-            u["status"] = "active"
-            u["expires_at"] = (base + timedelta(days=days)).isoformat()
-
-            save_users(users)
-            full_sync()
-
-            return u
-
-    raise ValueError("USER_NOT_FOUND")
+    return activate_paid(username, days)
 
 
 # =========================
-# DELETE / DEACTIVATE
+# DELETE
 # =========================
 
 def delete_user(username: str):
     users = load_users()
 
-    new_users = [u for u in users if u.get("username") != username]
+    users = [u for u in users if u.get("username") != username]
 
-    save_users(new_users)
+    save_users(users)
     full_sync()
 
+
+# =========================
+# DEACTIVATE
+# =========================
 
 def deactivate_user(username: str):
     users = load_users()
