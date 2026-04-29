@@ -20,8 +20,14 @@ dp.include_router(sync.router)
 dp.include_router(stats.router)
 
 
+from core.scheduler import periodic_sync
+
+
 async def main():
     print("ADMIN BOT STARTED")
+
+    asyncio.create_task(periodic_sync())
+
     await dp.start_polling(bot)
 
 
