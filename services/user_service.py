@@ -15,6 +15,10 @@ def _generate_password(length: int = 12):
     alphabet = string.ascii_letters + string.digits
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
+def _validate_username(username: str):
+    if not re.match(r"^[a-zA-Z0-9_]{3,20}$", username):
+        raise ValueError("INVALID_USERNAME")
+
 
 # =========================
 # GETTERS
