@@ -1,0 +1,7 @@
+[Unit]
+Description=TrustSystem Smart Sync
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/trustsystem
+ExecStart=/opt/trustsystem/venv/bin/python -c "from core.sync import full_sync; full_sync()"
