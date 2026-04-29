@@ -1,0 +1,10 @@
+[Unit]
+Description=TrustSystem Expire Checker
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/trustsystem
+EnvironmentFile=/opt/trustsystem/.env
+ExecStart=/opt/trustsystem/venv/bin/python -m services.expire_service
+
+User=root
