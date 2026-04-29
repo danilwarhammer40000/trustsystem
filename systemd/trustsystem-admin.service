@@ -4,15 +4,16 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
 WorkingDirectory=/opt/trustsystem
-
-ExecStart=/opt/trustsystem/venv/bin/python run_admin.py
+EnvironmentFile=/opt/trustsystem/.env
+ExecStart=/opt/trustsystem/venv/bin/python -m bots.admin.bot
 
 Restart=always
 RestartSec=5
+User=root
 
-Environment=PYTHONUNBUFFERED=1
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
