@@ -54,9 +54,16 @@ echo "[4/7] Configuration..."
 
 ENV_FILE="$PROJECT_DIR/.env"
 
-if [ -f "$ENV_FILE" ]; then
+is_valid_env() {
+    grep -q "ADMIN_BOT_TOKEN=" "$ENV_FILE" 2>/dev/null && \
+    grep -q "PUBLIC_BOT_TOKEN=" "$ENV_FILE" 2>/dev/null && \
+    grep -q "ADMIN_TG_ID=" "$ENV_FILE" 2>/dev/null && \
+    grep -q "DOMAIN=" "$ENV_FILE" 2>/dev/null
+}
+
+if [ -f "$ENV_FILE" ] && is_valid_env; then
     echo ""
-    echo "⚠️ .env already exists"
+    echo "⚠️ Valid .env detected"
     echo "1) Rewrite config"
     echo "2) Keep current"
     echo "3) Exit"
@@ -64,10 +71,39 @@ if [ -f "$ENV_FILE" ]; then
 
     case "$CHOICE" in
         1) ;;
-        2) ;;
-        3) exit 0 ;;
-        *) exit 1 ;;
+        2)
+            echo "[INFO] Keeping config"
+            ;;
+        3)
+            exit 0
+            ;;
+        *)
+            echo "Invalid option"
+            exit 1
+            ;;
     esac
+else
+    echo "[INFO] No valid config found, creating new..."
+    CHOICE=1
+fi
+
+if [ ! -f "$ENV_FILE" ] || [ "$CHOICE" = "1" ]; then
+
+    read -r -p "ADMIN_BOT_TOKEN: " ADMIN_BOT_TOKEN
+    read -r -p "PUBLIC_BOT_TOKEN: " PUBLIC_BOT_TOKEN
+    read -r -p "ADMIN_TG_ID: " ADMIN_TG_ID
+    read -r -p "DOMAIN: " DOMAIN
+
+    cat > "$ENV_FILE" <<EOF
+ADMIN_BOT_TOKEN=$ADMIN_BOT_TOKEN
+PUBLIC_BOT_TOKEN=$PUBLIC_BOT_TOKEN
+ADMIN_TG_ID=$ADMIN_TG_ID
+DOMAIN=$DOMAIN
+PYTHONPATH=$PROJECT_DIR
+EOF
+
+    chmod 600 "$ENV_FILE"
+    echo "[OK] .env saved"
 fi
 
 if [ ! -f "$ENV_FILE" ] || [ "${CHOICE:-1}" = "1" ]; then
