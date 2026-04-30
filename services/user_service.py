@@ -15,6 +15,7 @@ def _generate_password(length: int = 12):
     alphabet = string.ascii_letters + string.digits
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
+
 def _validate_username(username: str):
     if not re.match(r"^[a-zA-Z0-9_]{3,20}$", username):
         raise ValueError("INVALID_USERNAME")
@@ -52,14 +53,17 @@ def get_user_by_tg(tg_id: int):
 # CREATE
 # =========================
 
-
 def create_user(username: str, tg_id: int):
     _validate_username(username)
 
+    users = load_users()  # ← ВАЖНО (фикс ошибки)
+
+    # проверка TG
     for u in users:
         if str(u.get("telegram_id")) == str(tg_id):
             raise ValueError("USER_ALREADY_EXISTS")
 
+    # проверка username
     for u in users:
         if u.get("username") == username:
             raise ValueError("USERNAME_TAKEN")
@@ -127,7 +131,7 @@ def activate_paid(username: str, days: int):
                     old = datetime.fromisoformat(u["expires_at"])
                     if old > base:
                         base = old
-                except:
+                except Exception:
                     pass
 
             u["status"] = "active"
