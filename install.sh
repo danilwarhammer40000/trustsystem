@@ -7,6 +7,16 @@ PROJECT_DIR="/opt/trustsystem"
 REPO_URL="https://github.com/danilwarhammer40000/trustsystem.git"
 
 # -------------------------
+# WAIT FOR APT LOCK (fix unattended-upgrades)
+# -------------------------
+echo "[0/7] Checking apt lock..."
+
+while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
+    echo "[INFO] Waiting for apt lock..."
+    sleep 5
+done
+
+# -------------------------
 # DEPENDENCIES
 # -------------------------
 echo "[1/7] Installing dependencies..."
@@ -24,9 +34,8 @@ echo "[2/7] Repository..."
 if [ -d "$PROJECT_DIR/.git" ]; then
     echo "[INFO] Updating repo..."
     cd "$PROJECT_DIR"
-    git fetch --all
+    git fetch origin
     git reset --hard origin/main
-    git pull
 else
     echo "[INFO] Cloning repo..."
     rm -rf "$PROJECT_DIR"
@@ -58,7 +67,7 @@ ENV_FILE="$PROJECT_DIR/.env"
 is_valid_env() {
     [ -f "$ENV_FILE" ] || return 1
     grep -q "ADMIN_BOT_TOKEN=" "$ENV_FILE" && \
-    grep -q "BOT_TOKEN=" "$ENV_FILE" && \
+    grep -q "PUBLIC_BOT_TOKEN=" "$ENV_FILE" && \
     grep -q "ADMIN_TG_ID=" "$ENV_FILE" && \
     grep -q "DOMAIN=" "$ENV_FILE"
 }
@@ -66,12 +75,12 @@ is_valid_env() {
 create_env() {
     echo ""
     read -r -p "ADMIN_BOT_TOKEN: " ADMIN_BOT_TOKEN
-    read -r -p "BOT_TOKEN": " PUBLIC_BOT_TOKEN
+    read -r -p "PUBLIC_BOT_TOKEN: " PUBLIC_BOT_TOKEN
     read -r -p "ADMIN_TG_ID: " ADMIN_TG_ID
     read -r -p "DOMAIN: " DOMAIN
 
     cat > "$ENV_FILE" <<EOF
-BOT_TOKEN=$ADMIN_BOT_TOKEN
+ADMIN_BOT_TOKEN=$ADMIN_BOT_TOKEN
 PUBLIC_BOT_TOKEN=$PUBLIC_BOT_TOKEN
 ADMIN_TG_ID=$ADMIN_TG_ID
 DOMAIN=$DOMAIN
@@ -125,7 +134,6 @@ install_unit "trustsystem-public.service"
 install_unit "trustsystem-expire.service"
 install_unit "trustsystem-expire.timer"
 
-systemctl daemon-reexec
 systemctl daemon-reload
 
 systemctl enable trustsystem-admin.service
