@@ -53,8 +53,7 @@ def get_user_by_tg(tg_id: int):
 # =========================
 
 
-def create_user(tg_id: int, username: str):
-    users = load_users()
+def create_user(username: str, tg_id: int):
     _validate_username(username)
 
     for u in users:
