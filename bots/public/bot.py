@@ -2,7 +2,7 @@ import asyncio
 
 from aiogram import Bot, Dispatcher
 
-from config.settings import BOT_TOKEN
+from config.settings import PUBLIC_BOT_TOKEN
 
 from bots.public.handlers import (
     start,
@@ -13,7 +13,7 @@ from bots.public.handlers import (
     payments
 )
 
-bot = Bot(token=BOT_TOKEN)
+bot = Bot(token=PUBLIC_BOT_TOKEN)
 dp = Dispatcher()
 
 # порядок важен (FSM → ниже по стеку)
