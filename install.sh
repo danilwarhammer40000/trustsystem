@@ -58,7 +58,7 @@ ENV_FILE="$PROJECT_DIR/.env"
 is_valid_env() {
     [ -f "$ENV_FILE" ] || return 1
     grep -q "ADMIN_BOT_TOKEN=" "$ENV_FILE" && \
-    grep -q "PUBLIC_BOT_TOKEN=" "$ENV_FILE" && \
+    grep -q "BOT_TOKEN=" "$ENV_FILE" && \
     grep -q "ADMIN_TG_ID=" "$ENV_FILE" && \
     grep -q "DOMAIN=" "$ENV_FILE"
 }
@@ -66,12 +66,12 @@ is_valid_env() {
 create_env() {
     echo ""
     read -r -p "ADMIN_BOT_TOKEN: " ADMIN_BOT_TOKEN
-    read -r -p "PUBLIC_BOT_TOKEN: " PUBLIC_BOT_TOKEN
+    read -r -p "BOT_TOKEN": " PUBLIC_BOT_TOKEN
     read -r -p "ADMIN_TG_ID: " ADMIN_TG_ID
     read -r -p "DOMAIN: " DOMAIN
 
     cat > "$ENV_FILE" <<EOF
-ADMIN_BOT_TOKEN=$ADMIN_BOT_TOKEN
+BOT_TOKEN=$ADMIN_BOT_TOKEN
 PUBLIC_BOT_TOKEN=$PUBLIC_BOT_TOKEN
 ADMIN_TG_ID=$ADMIN_TG_ID
 DOMAIN=$DOMAIN
