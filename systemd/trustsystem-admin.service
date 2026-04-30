@@ -5,8 +5,8 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/trustsystem
-EnvironmentFile=/opt/trustsystem/.env
-ExecStart=/opt/trustsystem/venv/bin/python -m bots.admin.bot
+
+ExecStart=/bin/bash -c 'set -a; source /opt/trustsystem/.env; set +a; exec /opt/trustsystem/venv/bin/python -m bots.admin.bot'
 
 Restart=always
 RestartSec=5
