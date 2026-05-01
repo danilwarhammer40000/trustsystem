@@ -50,20 +50,15 @@ def get_user_by_tg(tg_id: int):
 
 
 # =========================
-# CREATE
+# CREATE (FIXED)
 # =========================
 
-def create_user(username: str, tg_id: int):
+def create_user(username: str, tg_id: int | None = None):
     _validate_username(username)
 
-    users = load_users()  # ← ВАЖНО (фикс ошибки)
+    users = load_users()
 
-    # проверка TG
-    for u in users:
-        if str(u.get("telegram_id")) == str(tg_id):
-            raise ValueError("USER_ALREADY_EXISTS")
-
-    # проверка username
+    # проверка username (TG ИГНОРИРУЕМ)
     for u in users:
         if u.get("username") == username:
             raise ValueError("USERNAME_TAKEN")
@@ -73,8 +68,8 @@ def create_user(username: str, tg_id: int):
     user = {
         "username": username,
         "password": password,
-        "telegram_id": tg_id,
-        "plan": "trial",
+        "telegram_id": tg_id,  # может быть None
+        "plan": "manual",
         "status": "inactive",
         "trial_used": False,
         "created_at": datetime.utcnow().isoformat(),
@@ -88,48 +83,33 @@ def create_user(username: str, tg_id: int):
 
 
 # =========================
-# ACTIVATE TRIAL
+# EXTEND (ГЛАВНАЯ ЛОГИКА)
 # =========================
 
-def activate_trial(username: str, days: int = 3):
+def extend_user(username: str, days: int):
     users = load_users()
 
     for u in users:
         if u.get("username") == username:
 
-            if u.get("trial_used"):
-                raise ValueError("TRIAL_ALREADY_USED")
+            now = datetime.utcnow()
 
-            expires = datetime.utcnow() + timedelta(days=days)
+            # бесконечность
+            if days == 0:
+                u["status"] = "active"
+                u["expires_at"] = None
 
-            u["status"] = "active"
-            u["trial_used"] = True
-            u["expires_at"] = expires.isoformat()
+                save_users(users)
+                full_sync()
+                return u
 
-            save_users(users)
-            full_sync()
+            base = now
 
-            return u
-
-    raise ValueError("USER_NOT_FOUND")
-
-
-# =========================
-# ACTIVATE PAID
-# =========================
-
-def activate_paid(username: str, days: int):
-    users = load_users()
-
-    for u in users:
-        if u.get("username") == username:
-
-            base = datetime.utcnow()
-
+            # если активен — продлеваем от текущей даты
             if u.get("expires_at"):
                 try:
                     old = datetime.fromisoformat(u["expires_at"])
-                    if old > base:
+                    if old > now:
                         base = old
                 except Exception:
                     pass
@@ -139,18 +119,37 @@ def activate_paid(username: str, days: int):
 
             save_users(users)
             full_sync()
-
             return u
 
     raise ValueError("USER_NOT_FOUND")
 
 
 # =========================
-# EXTEND
+# MANUAL DATE
 # =========================
 
-def extend_user(username: str, days: int):
-    return activate_paid(username, days)
+def set_manual_expire(username: str, date_str: str):
+    """
+    date_str формат: YYYY-MM-DD
+    """
+
+    users = load_users()
+
+    for u in users:
+        if u.get("username") == username:
+            try:
+                dt = datetime.fromisoformat(date_str)
+            except Exception:
+                raise ValueError("INVALID_DATE_FORMAT")
+
+            u["status"] = "active"
+            u["expires_at"] = dt.isoformat()
+
+            save_users(users)
+            full_sync()
+            return u
+
+    raise ValueError("USER_NOT_FOUND")
 
 
 # =========================
