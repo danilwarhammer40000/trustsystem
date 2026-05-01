@@ -1,19 +1,17 @@
-import asyncio
 from asyncio import to_thread
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 
-from bots.admin.states.user import AddUser
+from bots.admin.states.user import AddUser, ManualDate
 from bots.admin.keyboards.main import main_menu, cancel_kb
 
 from services.user_service import (
     create_user,
     get_all_users,
     delete_user,
-    get_user,
     extend_user,
     set_expire
 )
@@ -27,17 +25,7 @@ router = Router()
 
 
 # =========================
-# CANCEL
-# =========================
-
-@router.message(F.text == "❌ Cancel")
-async def cancel(msg: Message, state: FSMContext):
-    await state.clear()
-    await msg.answer("❌ Cancelled", reply_markup=main_menu)
-
-
-# =========================
-# ADD USER (FSM FIXED)
+# ADD USER
 # =========================
 
 @router.message(F.text == "➕ Add user")
@@ -50,83 +38,87 @@ async def add_user_start(msg: Message, state: FSMContext):
 async def add_username(msg: Message, state: FSMContext):
     await state.update_data(username=msg.text.strip())
     await state.set_state(AddUser.password)
-    await msg.answer("Enter password (or '-' to auto-generate):")
+    await msg.answer("Enter password (or '-' to auto):")
 
 
 @router.message(AddUser.password)
 async def add_password(msg: Message, state: FSMContext):
     await state.update_data(password=msg.text.strip())
-    await state.set_state(AddUser.days)
-    await msg.answer("Enter days (3 / 30 / 0):")
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="3 days", callback_data="days:3"),
+                InlineKeyboardButton(text="30 days", callback_data="days:30"),
+            ],
+            [
+                InlineKeyboardButton(text="∞", callback_data="days:0"),
+            ]
+        ]
+    )
+
+    await msg.answer("Select duration:", reply_markup=kb)
 
 
-@router.message(AddUser.days)
-async def add_days(msg: Message, state: FSMContext):
+@router.callback_query(F.data.startswith("days:"))
+async def add_finish(call: CallbackQuery, state: FSMContext):
+    days = int(call.data.split(":")[1])
     data = await state.get_data()
 
     try:
-        days = int(msg.text.strip())
-    except:
-        await msg.answer("Use numbers: 3 / 30 / 0")
-        return
+        user = create_user(
+            username=data["username"],
+            password=data["password"]
+        )
 
-    try:
-        user = create_user(username=data["username"])
+        extend_user(user["username"], days)
 
-        if days > 0:
-            extend_user(user["username"], days)
+        link = generate_link(user["username"], DOMAIN)
+
+        await call.message.answer(
+            f"👤 {user['username']}\n"
+            f"🔑 {user['password']}\n"
+            f"⏳ {days if days else '∞'}\n\n"
+            f"🔗 {link}",
+            reply_markup=main_menu
+        )
 
     except Exception as e:
-        await msg.answer(f"❌ Error: {str(e)}", reply_markup=main_menu)
-        await state.clear()
-        return
-
-    link = generate_link(user["username"], DOMAIN)
-
-    await msg.answer(
-        f"👤 {user['username']}\n"
-        f"🔑 {user['password']}\n"
-        f"⏳ {days if days > 0 else '∞'}\n\n"
-        f"🔗 {link}",
-        reply_markup=main_menu
-    )
+        await call.message.answer(f"❌ {str(e)}")
 
     await state.clear()
+    await call.answer()
 
 
 # =========================
-# LIST USERS → EXTEND FLOW
+# LIST USERS
 # =========================
 
 @router.message(F.text == "📋 List users")
 async def list_users(msg: Message):
     users = get_all_users() or []
 
-    if not users:
-        await msg.answer("No users")
-        return
-
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=f"{u['username']} ({u.get('expires_at') or '∞'})",
-                    callback_data=f"extend:{u['username']}"
+                    text=u["username"],
+                    callback_data=f"user:{u['username']}"
                 )
             ]
             for u in users
         ]
     )
 
-    await msg.answer("Select user:", reply_markup=kb)
+    await msg.answer("Users:", reply_markup=kb)
 
 
 # =========================
 # EXTEND MENU
 # =========================
 
-@router.callback_query(F.data.startswith("extend:"))
-async def extend_menu(call: CallbackQuery):
+@router.callback_query(F.data.startswith("user:"))
+async def user_menu(call: CallbackQuery):
     username = call.data.split(":")[1]
 
     kb = InlineKeyboardMarkup(
@@ -139,58 +131,55 @@ async def extend_menu(call: CallbackQuery):
                 InlineKeyboardButton(text="∞", callback_data=f"ext:{username}:0"),
             ],
             [
-                InlineKeyboardButton(text="Manual", callback_data=f"ext_manual:{username}")
+                InlineKeyboardButton(text="Manual", callback_data=f"manual:{username}")
             ]
         ]
     )
 
-    await call.message.answer(f"Extend: {username}", reply_markup=kb)
+    await call.message.answer(f"{username}", reply_markup=kb)
     await call.answer()
 
 
 # =========================
-# APPLY EXTEND
+# EXTEND APPLY
 # =========================
 
 @router.callback_query(F.data.startswith("ext:"))
 async def extend_apply(call: CallbackQuery):
     _, username, days = call.data.split(":")
-    days = int(days)
+    extend_user(username, int(days))
 
-    extend_user(username, days)
-
-    await call.message.answer(f"✅ Extended {username}")
+    await call.message.answer("✅ Done")
     await call.answer()
 
 
 # =========================
-# MANUAL DATE FIXED FSM
+# MANUAL DATE
 # =========================
 
-@router.callback_query(F.data.startswith("ext_manual:"))
+@router.callback_query(F.data.startswith("manual:"))
 async def manual_start(call: CallbackQuery, state: FSMContext):
     username = call.data.split(":")[1]
 
+    await state.set_state(ManualDate.date)
     await state.update_data(username=username)
-    await state.set_state("manual_date")
 
-    await call.message.answer("Enter date (YYYY-MM-DD):")
+    await call.message.answer("Enter date YYYY-MM-DD:")
     await call.answer()
 
 
-@router.message(F.state == "manual_date")
+@router.message(ManualDate.date)
 async def manual_apply(msg: Message, state: FSMContext):
     data = await state.get_data()
-    username = data["username"]
 
     try:
         dt = datetime.fromisoformat(msg.text.strip())
-        set_expire(username, dt)
+        set_expire(data["username"], dt)
 
-        await msg.answer(f"✅ Updated expire: {username}")
+        await msg.answer("✅ Updated")
 
-    except Exception as e:
-        await msg.answer(f"❌ Error: {str(e)}")
+    except Exception:
+        await msg.answer("❌ Invalid date")
 
     await state.clear()
 
@@ -201,7 +190,7 @@ async def manual_apply(msg: Message, state: FSMContext):
 
 @router.message(F.text == "❌ Delete user")
 async def delete_menu(msg: Message):
-    users = get_all_users() or []
+    users = get_all_users()
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -210,7 +199,7 @@ async def delete_menu(msg: Message):
         ]
     )
 
-    await msg.answer("Select user:", reply_markup=kb)
+    await msg.answer("Select:", reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith("del:"))
@@ -218,7 +207,7 @@ async def delete_cb(call: CallbackQuery):
     username = call.data.split(":")[1]
     delete_user(username)
 
-    await call.message.answer(f"❌ Deleted: {username}")
+    await call.message.answer("❌ Deleted")
     await call.answer()
 
 
@@ -228,23 +217,6 @@ async def delete_cb(call: CallbackQuery):
 
 @router.message(F.text == "🔄 Sync users")
 async def sync_btn(msg: Message):
-    await msg.answer("🔄 Sync...")
+    await msg.answer("Sync...")
     await to_thread(safe_sync)
-    await msg.answer("✅ Sync done")
-
-
-# =========================
-# STATS
-# =========================
-
-@router.message(F.text == "📊 Stats")
-async def stats_btn(msg: Message):
-    users = get_all_users() or []
-
-    active = len([u for u in users if u.get("status") == "active"])
-
-    await msg.answer(
-        f"📊 Stats:\n"
-        f"Active: {active}\n"
-        f"Total: {len(users)}"
-    )
+    await msg.answer("✅ Done")
