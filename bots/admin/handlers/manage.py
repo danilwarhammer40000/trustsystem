@@ -22,7 +22,7 @@ from services.user_service import (
 )
 
 from core.generator import generate_link
-from core.service import safe_sync
+from core.sync import safe_sync
 from config.settings import DOMAIN
 
 
