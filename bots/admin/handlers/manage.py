@@ -35,7 +35,6 @@ def format_expire(date_str):
     try:
         dt = datetime.fromisoformat(date_str)
 
-        # FIX ∞
         if dt.year >= 2099:
             return "∞"
 
@@ -51,13 +50,28 @@ def status_emoji(date_str):
     try:
         dt = datetime.fromisoformat(date_str)
 
-        # FIX ∞ always active
         if dt.year >= 2099:
             return "🟢"
 
         return "🟢" if dt > datetime.utcnow() else "🔴"
     except:
         return "🔴"
+
+
+def build_user_card(user, link):
+    expire = format_expire(user.get("expires_at"))
+
+    # убираем tt://? для QR
+    clean_link = link.replace("tt://?", "")
+
+    return (
+        f"👤 {user['username']}\n"
+        f"🔑 {user['password']}\n"
+        f"⏳ {expire}\n\n"
+        f"🔗 {link}\n\n"
+        f"To connect on mobile, you can scan QR code on the page: "
+        f"https://trusttunnel.org/qr.html#tt={clean_link}"
+    )
 
 
 def cancel_inline():
@@ -133,7 +147,7 @@ async def add_password(msg: Message, state: FSMContext):
 
 
 # =========================
-# DAYS BUTTONS
+# DAYS
 # =========================
 
 async def show_days(target):
@@ -167,15 +181,10 @@ async def add_finish(call: CallbackQuery, state: FSMContext):
         )
 
         user = extend_user(user["username"], days)
-
-        expire = format_expire(user.get("expires_at"))
         link = generate_link(user["username"], DOMAIN)
 
         await call.message.answer(
-            f"👤 {user['username']}\n"
-            f"🔑 {user['password']}\n"
-            f"⏳ {expire}\n\n"
-            f"🔗 {link}",
+            build_user_card(user, link),
             reply_markup=main_menu
         )
 
@@ -286,26 +295,30 @@ async def manual_apply(msg: Message, state: FSMContext):
 
 
 # =========================
-# GET LINK (INLINE)
+# GET LINK (INLINE + MENU)
 # =========================
 
 @router.callback_query(F.data.startswith("link:"))
 async def get_link(call: CallbackQuery):
     username = call.data.split(":")[1]
 
+    users = get_all_users() or []
+    user = next((u for u in users if u["username"] == username), None)
+
+    if not user:
+        await call.message.answer("❌ User not found")
+        await call.answer()
+        return
+
     link = generate_link(username, DOMAIN)
 
-    if not link:
-        await call.message.answer("❌ Error generating link")
-    else:
-        await call.message.answer(f"🔗 {link}")
+    await call.message.answer(
+        build_user_card(user, link),
+        reply_markup=main_menu
+    )
 
     await call.answer()
 
-
-# =========================
-# GET LINK (MAIN MENU FIX)
-# =========================
 
 @router.message(F.text == "🔗 Get link")
 async def get_link_menu(msg: Message):
