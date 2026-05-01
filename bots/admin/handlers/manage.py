@@ -1,9 +1,11 @@
 import asyncio
 from asyncio import to_thread
+from datetime import datetime
 
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 
 from bots.admin.states.user import AddUser
 from bots.admin.keyboards.main import main_menu, cancel_kb
@@ -22,6 +24,15 @@ from config.settings import DOMAIN
 
 
 router = Router()
+
+
+# =========================
+# FSM (MANUAL EXTEND)
+# =========================
+
+class ExtendManual(StatesGroup):
+    username = State()
+    date = State()
 
 
 # =========================
@@ -69,9 +80,9 @@ async def add_days(msg: Message, state: FSMContext):
         return
 
     try:
+        # ❗ tg_id УБРАН
         user = create_user(
-            username=data["username"],
-            tg_id=msg.from_user.id
+            username=data["username"]
         )
 
         if days > 0:
@@ -96,7 +107,7 @@ async def add_days(msg: Message, state: FSMContext):
 
 
 # =========================
-# LIST USERS
+# LIST USERS → EXTEND FLOW
 # =========================
 
 @router.message(F.text == "📋 List users")
@@ -112,60 +123,7 @@ async def list_users(msg: Message):
             [
                 InlineKeyboardButton(
                     text=f"{u['username']} ({u.get('expires_at') or '∞'})",
-                    callback_data=f"user:{u['username']}"
-                )
-            ]
-            for u in users
-        ]
-    )
-
-    await msg.answer("Users:", reply_markup=kb)
-
-
-# =========================
-# USER INFO (ВАЖНО — у тебя этого не было)
-# =========================
-
-@router.callback_query(F.data.startswith("user:"))
-async def user_info(call: CallbackQuery):
-    username = call.data.split(":")[1]
-
-    user = get_user(username)
-
-    if not user:
-        await call.answer("User not found", show_alert=True)
-        return
-
-    link = generate_link(username, DOMAIN)
-
-    await call.message.answer(
-        f"👤 {username}\n"
-        f"🔑 {user.get('password')}\n"
-        f"⏳ {user.get('expires_at') or '∞'}\n\n"
-        f"🔗 {link}"
-    )
-
-    await call.answer()
-
-
-# =========================
-# DELETE
-# =========================
-
-@router.message(F.text == "❌ Delete user")
-async def delete_menu(msg: Message):
-    users = get_all_users() or []
-
-    if not users:
-        await msg.answer("No users")
-        return
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=u["username"],
-                    callback_data=f"del:{u['username']}"
+                    callback_data=f"extend:{u['username']}"
                 )
             ]
             for u in users
@@ -175,85 +133,57 @@ async def delete_menu(msg: Message):
     await msg.answer("Select user:", reply_markup=kb)
 
 
-@router.callback_query(F.data.startswith("del:"))
-async def delete_cb(call: CallbackQuery):
+# =========================
+# EXTEND MENU
+# =========================
+
+@router.callback_query(F.data.startswith("extend:"))
+async def extend_menu(call: CallbackQuery):
     username = call.data.split(":")[1]
-
-    delete_user(username)
-
-    await call.message.answer(f"❌ Deleted: {username}")
-    await call.answer()
-
-
-# =========================
-# GET LINK
-# =========================
-
-@router.message(F.text == "🔗 Get link")
-async def link_menu(msg: Message):
-    users = get_all_users() or []
-
-    if not users:
-        await msg.answer("No users")
-        return
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text=u["username"],
-                    callback_data=f"link:{u['username']}"
-                )
+                InlineKeyboardButton(text="3 days", callback_data=f"ext:{username}:3"),
+                InlineKeyboardButton(text="30 days", callback_data=f"ext:{username}:30"),
+            ],
+            [
+                InlineKeyboardButton(text="∞", callback_data=f"ext:{username}:0"),
+            ],
+            [
+                InlineKeyboardButton(text="Manual", callback_data=f"ext_manual:{username}")
             ]
-            for u in users
         ]
     )
 
-    await msg.answer("Select user:", reply_markup=kb)
+    await call.message.answer(f"Extend user: {username}", reply_markup=kb)
+    await call.answer()
 
 
-@router.callback_query(F.data.startswith("link:"))
-async def link_cb(call: CallbackQuery):
-    username = call.data.split(":")[1]
+# =========================
+# APPLY EXTEND
+# =========================
 
-    user = get_user(username)
-    link = generate_link(username, DOMAIN)
+@router.callback_query(F.data.startswith("ext:"))
+async def extend_apply(call: CallbackQuery):
+    _, username, days = call.data.split(":")
+    days = int(days)
 
-    await call.message.answer(
-        f"👤 {username}\n"
-        f"🔑 {user.get('password')}\n"
-        f"⏳ {user.get('expires_at') or '∞'}\n\n"
-        f"🔗 {link}"
-    )
+    try:
+        extend_user(username, days)
+
+        await call.message.answer(
+            f"✅ Extended {username} by {days if days > 0 else '∞'} days"
+        )
+
+    except Exception as e:
+        await call.message.answer(f"❌ Error: {str(e)}")
 
     await call.answer()
 
 
 # =========================
-# SYNC
+# MANUAL EXTEND (FSM)
 # =========================
 
-@router.message(F.text == "🔄 Sync users")
-async def sync_btn(msg: Message):
-    await msg.answer("🔄 Sync...")
-
-    await to_thread(safe_sync)
-
-    await msg.answer("✅ Sync done")
-
-
-# =========================
-# STATS
-# =========================
-
-@router.message(F.text == "📊 Stats")
-async def stats_btn(msg: Message):
-    users = get_all_users() or []
-
-    active = len([u for u in users if u.get("status") == "active"])
-
-    await msg.answer(
-        f"📊 Stats:\n"
-        f"Active: {active}\n"
-        f"Total: {len(users)}"
-    )
+@router.callback_query(F.data.startswith("ext_manual
