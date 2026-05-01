@@ -30,22 +30,9 @@ def get_all_users():
 
 
 def get_user(username: str):
-    users = load_users()
-
-    for u in users:
+    for u in load_users():
         if u.get("username") == username:
             return u
-
-    return None
-
-
-def get_user_by_tg(tg_id: int):
-    users = load_users()
-
-    for u in users:
-        if str(u.get("telegram_id")) == str(tg_id):
-            return u
-
     return None
 
 
@@ -53,22 +40,21 @@ def get_user_by_tg(tg_id: int):
 # CREATE (FIXED)
 # =========================
 
-def create_user(username: str, tg_id: int | None = None):
+def create_user(username: str, password: str | None = None):
     _validate_username(username)
 
     users = load_users()
 
-    # проверка username (TG ИГНОРИРУЕМ)
     for u in users:
         if u.get("username") == username:
             raise ValueError("USERNAME_TAKEN")
 
-    password = _generate_password()
+    password = password if password and password != "-" else _generate_password()
 
     user = {
         "username": username,
         "password": password,
-        "telegram_id": tg_id,  # может быть None
+        "telegram_id": None,
         "plan": "manual",
         "status": "inactive",
         "trial_used": False,
@@ -79,11 +65,13 @@ def create_user(username: str, tg_id: int | None = None):
     users.append(user)
     save_users(users)
 
+    full_sync()
+
     return user
 
 
 # =========================
-# EXTEND (ГЛАВНАЯ ЛОГИКА)
+# EXTEND
 # =========================
 
 def extend_user(username: str, days: int):
@@ -94,10 +82,10 @@ def extend_user(username: str, days: int):
 
             now = datetime.utcnow()
 
-            # бесконечность
+            # FIX ∞
             if days == 0:
                 u["status"] = "active"
-                u["expires_at"] = None
+                u["expires_at"] = "2099-12-31T23:59:59"
 
                 save_users(users)
                 full_sync()
@@ -105,13 +93,12 @@ def extend_user(username: str, days: int):
 
             base = now
 
-            # если активен — продлеваем от текущей даты
             if u.get("expires_at"):
                 try:
                     old = datetime.fromisoformat(u["expires_at"])
                     if old > now:
                         base = old
-                except Exception:
+                except:
                     pass
 
             u["status"] = "active"
@@ -128,22 +115,13 @@ def extend_user(username: str, days: int):
 # MANUAL DATE
 # =========================
 
-def set_manual_expire(username: str, date_str: str):
-    """
-    date_str формат: YYYY-MM-DD
-    """
-
+def set_expire(username: str, dt: datetime):
     users = load_users()
 
     for u in users:
         if u.get("username") == username:
-            try:
-                dt = datetime.fromisoformat(date_str)
-            except Exception:
-                raise ValueError("INVALID_DATE_FORMAT")
-
-            u["status"] = "active"
             u["expires_at"] = dt.isoformat()
+            u["status"] = "active" if dt > datetime.utcnow() else "inactive"
 
             save_users(users)
             full_sync()
@@ -158,38 +136,7 @@ def set_manual_expire(username: str, date_str: str):
 
 def delete_user(username: str):
     users = load_users()
-
     users = [u for u in users if u.get("username") != username]
 
     save_users(users)
     full_sync()
-
-
-# =========================
-# DEACTIVATE
-# =========================
-
-def deactivate_user(username: str):
-    users = load_users()
-
-    for u in users:
-        if u.get("username") == username:
-            u["status"] = "inactive"
-
-    save_users(users)
-    full_sync()
-
-
-
-def set_expire(username: str, dt: datetime):
-    users = load_users()
-
-    for u in users:
-        if u.get("username") == username:
-            u["expires_at"] = dt.isoformat()
-            u["status"] = "active" if dt > datetime.utcnow() else "inactive"
-            save_users(users)
-            full_sync()
-            return u
-
-    raise ValueError("USER_NOT_FOUND")
