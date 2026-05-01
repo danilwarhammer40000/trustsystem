@@ -5,7 +5,6 @@ from datetime import datetime
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 
 from bots.admin.states.user import AddUser
 from bots.admin.keyboards.main import main_menu, cancel_kb
@@ -15,7 +14,8 @@ from services.user_service import (
     get_all_users,
     delete_user,
     get_user,
-    extend_user
+    extend_user,
+    set_expire  # ДОЛЖЕН БЫТЬ В СЕРВИСЕ
 )
 
 from core.generator import generate_link
@@ -24,15 +24,6 @@ from config.settings import DOMAIN
 
 
 router = Router()
-
-
-# =========================
-# FSM (MANUAL EXTEND)
-# =========================
-
-class ExtendManual(StatesGroup):
-    username = State()
-    date = State()
 
 
 # =========================
@@ -80,7 +71,7 @@ async def add_days(msg: Message, state: FSMContext):
         return
 
     try:
-        # ❗ tg_id УБРАН
+        # ❗ БЕЗ tg_id
         user = create_user(
             username=data["username"]
         )
@@ -161,7 +152,7 @@ async def extend_menu(call: CallbackQuery):
 
 
 # =========================
-# APPLY EXTEND
+# EXTEND APPLY
 # =========================
 
 @router.callback_query(F.data.startswith("ext:"))
@@ -173,7 +164,7 @@ async def extend_apply(call: CallbackQuery):
         extend_user(username, days)
 
         await call.message.answer(
-            f"✅ Extended {username} by {days if days > 0 else '∞'} days"
+            f"✅ Extended {username} by {days if days > 0 else '∞'}"
         )
 
     except Exception as e:
@@ -186,4 +177,141 @@ async def extend_apply(call: CallbackQuery):
 # MANUAL EXTEND (FSM)
 # =========================
 
-@router.callback_query(F.data.startswith("ext_manual
+@router.callback_query(F.data.startswith("ext_manual:"))
+async def manual_start(call: CallbackQuery, state: FSMContext):
+    username = call.data.split(":")[1]
+
+    await state.update_data(username=username)
+    await state.set_state("manual_date")
+
+    await call.message.answer("Enter date (YYYY-MM-DD):")
+    await call.answer()
+
+
+@router.message(F.text, F.state == "manual_date")
+async def manual_apply(msg: Message, state: FSMContext):
+    data = await state.get_data()
+    username = data["username"]
+
+    try:
+        dt = datetime.fromisoformat(msg.text.strip())
+
+        set_expire(username, dt)
+
+        await msg.answer(f"✅ Manual expire set for {username}: {dt}")
+
+    except Exception as e:
+        await msg.answer(f"❌ Error: {str(e)}")
+
+    await state.clear()
+
+
+# =========================
+# DELETE
+# =========================
+
+@router.message(F.text == "❌ Delete user")
+async def delete_menu(msg: Message):
+    users = get_all_users() or []
+
+    if not users:
+        await msg.answer("No users")
+        return
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=u["username"],
+                    callback_data=f"del:{u['username']}"
+                )
+            ]
+            for u in users
+        ]
+    )
+
+    await msg.answer("Select user:", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("del:"))
+async def delete_cb(call: CallbackQuery):
+    username = call.data.split(":")[1]
+
+    delete_user(username)
+
+    await call.message.answer(f"❌ Deleted: {username}")
+    await call.answer()
+
+
+# =========================
+# GET LINK (оставил как есть)
+# =========================
+
+@router.message(F.text == "🔗 Get link")
+async def link_menu(msg: Message):
+    users = get_all_users() or []
+
+    if not users:
+        await msg.answer("No users")
+        return
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=u["username"],
+                    callback_data=f"link:{u['username']}"
+                )
+            ]
+            for u in users
+        ]
+    )
+
+    await msg.answer("Select user:", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("link:"))
+async def link_cb(call: CallbackQuery):
+    username = call.data.split(":")[1]
+
+    user = get_user(username)
+    link = generate_link(username, DOMAIN)
+
+    await call.message.answer(
+        f"👤 {username}\n"
+        f"🔑 {user.get('password')}\n"
+        f"⏳ {user.get('expires_at') or '∞'}\n\n"
+        f"🔗 {link}"
+    )
+
+    await call.answer()
+
+
+# =========================
+# SYNC
+# =========================
+
+@router.message(F.text == "🔄 Sync users")
+async def sync_btn(msg: Message):
+    await msg.answer("🔄 Sync...")
+
+    await to_thread(safe_sync)
+
+    await msg.answer("✅ Sync done")
+
+
+# =========================
+# STATS
+# =========================
+
+@router.message(F.text == "📊 Stats")
+async def stats_btn(msg: Message):
+    users = get_all_users() or []
+
+    active = len([u for u in users if u.get("status") == "active"])
+
+    await msg.answer(
+        f"📊 Stats:\n"
+        f"Active: {active}\n"
+        f"Total: {len(users)}"
+    )
