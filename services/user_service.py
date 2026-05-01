@@ -178,3 +178,18 @@ def deactivate_user(username: str):
 
     save_users(users)
     full_sync()
+
+
+
+def set_expire(username: str, dt: datetime):
+    users = load_users()
+
+    for u in users:
+        if u.get("username") == username:
+            u["expires_at"] = dt.isoformat()
+            u["status"] = "active" if dt > datetime.utcnow() else "inactive"
+            save_users(users)
+            full_sync()
+            return u
+
+    raise ValueError("USER_NOT_FOUND")
