@@ -57,3 +57,11 @@ def full_sync():
 
         rebuild_credentials_from_db(users)
         restart_trusttunnel()
+
+def safe_sync():
+    try:
+        full_sync()
+        return "OK"
+    except Exception as e:
+        print("[SYNC ERROR]", str(e))
+        return f"ERROR: {str(e)}"
