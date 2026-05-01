@@ -34,6 +34,11 @@ def format_expire(date_str):
 
     try:
         dt = datetime.fromisoformat(date_str)
+
+        # FIX ∞
+        if dt.year >= 2099:
+            return "∞"
+
         return dt.strftime("%y-%m-%d")
     except:
         return "?"
@@ -45,6 +50,11 @@ def status_emoji(date_str):
 
     try:
         dt = datetime.fromisoformat(date_str)
+
+        # FIX ∞ always active
+        if dt.year >= 2099:
+            return "🟢"
+
         return "🟢" if dt > datetime.utcnow() else "🔴"
     except:
         return "🔴"
@@ -159,7 +169,6 @@ async def add_finish(call: CallbackQuery, state: FSMContext):
         user = extend_user(user["username"], days)
 
         expire = format_expire(user.get("expires_at"))
-
         link = generate_link(user["username"], DOMAIN)
 
         await call.message.answer(
@@ -277,7 +286,7 @@ async def manual_apply(msg: Message, state: FSMContext):
 
 
 # =========================
-# GET LINK
+# GET LINK (INLINE)
 # =========================
 
 @router.callback_query(F.data.startswith("link:"))
@@ -292,6 +301,33 @@ async def get_link(call: CallbackQuery):
         await call.message.answer(f"🔗 {link}")
 
     await call.answer()
+
+
+# =========================
+# GET LINK (MAIN MENU FIX)
+# =========================
+
+@router.message(F.text == "🔗 Get link")
+async def get_link_menu(msg: Message):
+    users = get_all_users() or []
+
+    if not users:
+        await msg.answer("No users")
+        return
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=u["username"],
+                    callback_data=f"link:{u['username']}"
+                )
+            ]
+            for u in users
+        ]
+    )
+
+    await msg.answer("Select user:", reply_markup=kb)
 
 
 # =========================
