@@ -58,19 +58,41 @@ def status_emoji(date_str):
         return "🔴"
 
 
+# =========================
+# SAFE LINK CLEANER (FIX)
+# =========================
+
+def clean_link(link: str) -> str:
+    if not link:
+        return ""
+
+    # убираем возможный мусор от старого generator.py
+    link = link.strip()
+
+    if "To connect on mobile" in link:
+        link = link.split("To connect on mobile")[0].strip()
+
+    if "\n" in link:
+        link = link.split("\n")[0].strip()
+
+    return link
+
+
 def build_user_card(user, link):
     expire = format_expire(user.get("expires_at"))
 
-    # убираем tt://? для QR
-    clean_link = link.replace("tt://?", "")
+    link = clean_link(link)
+
+    # QR token
+    qr_token = link.replace("tt://?", "")
 
     return (
         f"👤 {user['username']}\n"
         f"🔑 {user['password']}\n"
         f"⏳ {expire}\n\n"
         f"🔗 {link}\n\n"
-        f"To connect on mobile, you can scan QR code on the page: "
-        f"https://trusttunnel.org/qr.html#tt={clean_link}"
+        f"To connect on mobile, you can scan QR code on the page:\n"
+        f"https://trusttunnel.org/qr.html#tt={qr_token}"
     )
 
 
@@ -169,6 +191,10 @@ async def show_days(target):
     await target.answer("Select duration:", reply_markup=kb)
 
 
+# =========================
+# CREATE USER FINAL
+# =========================
+
 @router.callback_query(F.data.startswith("days:"))
 async def add_finish(call: CallbackQuery, state: FSMContext):
     days = int(call.data.split(":")[1])
@@ -181,7 +207,8 @@ async def add_finish(call: CallbackQuery, state: FSMContext):
         )
 
         user = extend_user(user["username"], days)
-        link = generate_link(user["username"], DOMAIN)
+
+        link = clean_link(generate_link(user["username"], DOMAIN))
 
         await call.message.answer(
             build_user_card(user, link),
@@ -295,7 +322,7 @@ async def manual_apply(msg: Message, state: FSMContext):
 
 
 # =========================
-# GET LINK (INLINE + MENU)
+# GET LINK (FIXED - NO DUPLICATES)
 # =========================
 
 @router.callback_query(F.data.startswith("link:"))
@@ -310,7 +337,7 @@ async def get_link(call: CallbackQuery):
         await call.answer()
         return
 
-    link = generate_link(username, DOMAIN)
+    link = clean_link(generate_link(username, DOMAIN))
 
     await call.message.answer(
         build_user_card(user, link),
@@ -349,7 +376,7 @@ async def get_link_menu(msg: Message):
 
 @router.message(F.text == "❌ Delete user")
 async def delete_menu(msg: Message):
-    users = get_all_users()
+    users = get_all_users() or []
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
