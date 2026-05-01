@@ -1,6 +1,6 @@
 import asyncio
 from asyncio import to_thread
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -15,7 +15,7 @@ from services.user_service import (
     delete_user,
     get_user,
     extend_user,
-    set_expire  # ДОЛЖЕН БЫТЬ В СЕРВИСЕ
+    set_expire
 )
 
 from core.generator import generate_link
@@ -37,7 +37,7 @@ async def cancel(msg: Message, state: FSMContext):
 
 
 # =========================
-# ADD USER (FSM)
+# ADD USER (FSM FIXED)
 # =========================
 
 @router.message(F.text == "➕ Add user")
@@ -57,7 +57,7 @@ async def add_username(msg: Message, state: FSMContext):
 async def add_password(msg: Message, state: FSMContext):
     await state.update_data(password=msg.text.strip())
     await state.set_state(AddUser.days)
-    await msg.answer("Days (3 / 30 / 0):")
+    await msg.answer("Enter days (3 / 30 / 0):")
 
 
 @router.message(AddUser.days)
@@ -67,14 +67,11 @@ async def add_days(msg: Message, state: FSMContext):
     try:
         days = int(msg.text.strip())
     except:
-        await msg.answer("Use 3 / 30 / 0")
+        await msg.answer("Use numbers: 3 / 30 / 0")
         return
 
     try:
-        # ❗ БЕЗ tg_id
-        user = create_user(
-            username=data["username"]
-        )
+        user = create_user(username=data["username"])
 
         if days > 0:
             extend_user(user["username"], days)
@@ -87,9 +84,9 @@ async def add_days(msg: Message, state: FSMContext):
     link = generate_link(user["username"], DOMAIN)
 
     await msg.answer(
-        f"👤 Username: {user['username']}\n"
-        f"🔑 Password: {user['password']}\n"
-        f"⏳ Days: {days if days > 0 else '∞'}\n\n"
+        f"👤 {user['username']}\n"
+        f"🔑 {user['password']}\n"
+        f"⏳ {days if days > 0 else '∞'}\n\n"
         f"🔗 {link}",
         reply_markup=main_menu
     )
@@ -147,12 +144,12 @@ async def extend_menu(call: CallbackQuery):
         ]
     )
 
-    await call.message.answer(f"Extend user: {username}", reply_markup=kb)
+    await call.message.answer(f"Extend: {username}", reply_markup=kb)
     await call.answer()
 
 
 # =========================
-# EXTEND APPLY
+# APPLY EXTEND
 # =========================
 
 @router.callback_query(F.data.startswith("ext:"))
@@ -160,21 +157,14 @@ async def extend_apply(call: CallbackQuery):
     _, username, days = call.data.split(":")
     days = int(days)
 
-    try:
-        extend_user(username, days)
+    extend_user(username, days)
 
-        await call.message.answer(
-            f"✅ Extended {username} by {days if days > 0 else '∞'}"
-        )
-
-    except Exception as e:
-        await call.message.answer(f"❌ Error: {str(e)}")
-
+    await call.message.answer(f"✅ Extended {username}")
     await call.answer()
 
 
 # =========================
-# MANUAL EXTEND (FSM)
+# MANUAL DATE FIXED FSM
 # =========================
 
 @router.callback_query(F.data.startswith("ext_manual:"))
@@ -188,17 +178,16 @@ async def manual_start(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-@router.message(F.text, F.state == "manual_date")
+@router.message(F.state == "manual_date")
 async def manual_apply(msg: Message, state: FSMContext):
     data = await state.get_data()
     username = data["username"]
 
     try:
         dt = datetime.fromisoformat(msg.text.strip())
-
         set_expire(username, dt)
 
-        await msg.answer(f"✅ Manual expire set for {username}: {dt}")
+        await msg.answer(f"✅ Updated expire: {username}")
 
     except Exception as e:
         await msg.answer(f"❌ Error: {str(e)}")
@@ -214,18 +203,9 @@ async def manual_apply(msg: Message, state: FSMContext):
 async def delete_menu(msg: Message):
     users = get_all_users() or []
 
-    if not users:
-        await msg.answer("No users")
-        return
-
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=u["username"],
-                    callback_data=f"del:{u['username']}"
-                )
-            ]
+            [InlineKeyboardButton(text=u["username"], callback_data=f"del:{u['username']}")]
             for u in users
         ]
     )
@@ -236,54 +216,9 @@ async def delete_menu(msg: Message):
 @router.callback_query(F.data.startswith("del:"))
 async def delete_cb(call: CallbackQuery):
     username = call.data.split(":")[1]
-
     delete_user(username)
 
     await call.message.answer(f"❌ Deleted: {username}")
-    await call.answer()
-
-
-# =========================
-# GET LINK (оставил как есть)
-# =========================
-
-@router.message(F.text == "🔗 Get link")
-async def link_menu(msg: Message):
-    users = get_all_users() or []
-
-    if not users:
-        await msg.answer("No users")
-        return
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=u["username"],
-                    callback_data=f"link:{u['username']}"
-                )
-            ]
-            for u in users
-        ]
-    )
-
-    await msg.answer("Select user:", reply_markup=kb)
-
-
-@router.callback_query(F.data.startswith("link:"))
-async def link_cb(call: CallbackQuery):
-    username = call.data.split(":")[1]
-
-    user = get_user(username)
-    link = generate_link(username, DOMAIN)
-
-    await call.message.answer(
-        f"👤 {username}\n"
-        f"🔑 {user.get('password')}\n"
-        f"⏳ {user.get('expires_at') or '∞'}\n\n"
-        f"🔗 {link}"
-    )
-
     await call.answer()
 
 
@@ -294,9 +229,7 @@ async def link_cb(call: CallbackQuery):
 @router.message(F.text == "🔄 Sync users")
 async def sync_btn(msg: Message):
     await msg.answer("🔄 Sync...")
-
     await to_thread(safe_sync)
-
     await msg.answer("✅ Sync done")
 
 
