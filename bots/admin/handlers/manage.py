@@ -1,13 +1,8 @@
 import asyncio
-from datetime import datetime, timedelta
+from asyncio import to_thread
 
 from aiogram import Router, F
-from aiogram.types import (
-    Message,
-    CallbackQuery,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton
-)
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 
 from bots.admin.states.user import AddUser
@@ -53,16 +48,12 @@ async def add_user_start(msg: Message, state: FSMContext):
 async def add_username(msg: Message, state: FSMContext):
     await state.update_data(username=msg.text.strip())
     await state.set_state(AddUser.password)
-    await msg.answer("Enter password (or send '-' to auto-generate):")
+    await msg.answer("Enter password (or '-' to auto-generate):")
 
 
 @router.message(AddUser.password)
 async def add_password(msg: Message, state: FSMContext):
-    password = msg.text.strip()
-
-    # пароль у тебя генерируется в service → просто игнорим ввод
-    await state.update_data(password=password)
-
+    await state.update_data(password=msg.text.strip())
     await state.set_state(AddUser.days)
     await msg.answer("Days (3 / 30 / 0):")
 
@@ -78,13 +69,11 @@ async def add_days(msg: Message, state: FSMContext):
         return
 
     try:
-        # создаём пользователя
         user = create_user(
             username=data["username"],
             tg_id=msg.from_user.id
         )
 
-        # активируем если нужно
         if days > 0:
             extend_user(user["username"], days)
 
@@ -93,7 +82,6 @@ async def add_days(msg: Message, state: FSMContext):
         await state.clear()
         return
 
-    # генерируем ссылку
     link = generate_link(user["username"], DOMAIN)
 
     await msg.answer(
@@ -132,6 +120,32 @@ async def list_users(msg: Message):
     )
 
     await msg.answer("Users:", reply_markup=kb)
+
+
+# =========================
+# USER INFO (ВАЖНО — у тебя этого не было)
+# =========================
+
+@router.callback_query(F.data.startswith("user:"))
+async def user_info(call: CallbackQuery):
+    username = call.data.split(":")[1]
+
+    user = get_user(username)
+
+    if not user:
+        await call.answer("User not found", show_alert=True)
+        return
+
+    link = generate_link(username, DOMAIN)
+
+    await call.message.answer(
+        f"👤 {username}\n"
+        f"🔑 {user.get('password')}\n"
+        f"⏳ {user.get('expires_at') or '∞'}\n\n"
+        f"🔗 {link}"
+    )
+
+    await call.answer()
 
 
 # =========================
@@ -216,21 +230,20 @@ async def link_cb(call: CallbackQuery):
 
 
 # =========================
-# SYNC BUTTON
+# SYNC
 # =========================
 
 @router.message(F.text == "🔄 Sync users")
 async def sync_btn(msg: Message):
     await msg.answer("🔄 Sync...")
 
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, safe_sync)
+    await to_thread(safe_sync)
 
     await msg.answer("✅ Sync done")
 
 
 # =========================
-# STATS BUTTON
+# STATS
 # =========================
 
 @router.message(F.text == "📊 Stats")
