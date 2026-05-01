@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from aiogram import Bot, Dispatcher
 
@@ -8,6 +9,13 @@ from bots.admin.middleware.access import AdminAccessMiddleware
 from bots.admin.handlers import start, stats, users, sync, manage
 
 from core.scheduler import periodic_sync
+
+
+# =========================
+# LOGGING (ВАЖНО)
+# =========================
+
+logging.basicConfig(level=logging.INFO)
 
 
 # =========================
@@ -38,19 +46,39 @@ dp.include_router(manage.router)
 
 
 # =========================
+# SAFE SCHEDULER
+# =========================
+
+async def scheduler_loop():
+    """
+    Защищённый фоновой цикл sync.
+    Никогда не падает и не убивает бот.
+    """
+    while True:
+        try:
+            await asyncio.to_thread(periodic_sync)
+        except Exception as e:
+            logging.error(f"[SYNC ERROR] {e}")
+
+        await asyncio.sleep(300)  # каждые 5 минут
+
+
+# =========================
 # MAIN LOOP
 # =========================
 
 async def main():
     print("ADMIN BOT STARTED")
 
-    try:
-        asyncio.create_task(periodic_sync())
-    except Exception as e:
-        print(f"[SCHEDULER ERROR] {e}")
+    # scheduler НЕ должен ломать bot
+    asyncio.create_task(scheduler_loop())
 
     await dp.start_polling(bot)
 
+
+# =========================
+# ENTRYPOINT
+# =========================
 
 if __name__ == "__main__":
     asyncio.run(main())
