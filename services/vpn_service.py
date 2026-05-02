@@ -28,18 +28,22 @@ def get_vpn_link(username: str):
 
 
 # =========================
-# ACTIVATE ACCESS (ENTRYPOINT)
+# ACTIVATE ACCESS
 # =========================
 
-def activate_access(username: str, plan: str = "trial"):
+def activate_access(username: str, plan: str):
     from services.user_service import activate_trial, activate_paid
 
     if plan == "trial":
-        user = activate_trial(username)
-    else:
-        user = activate_paid(username, 30)
+        return activate_trial(username)
 
-    return user
+    if plan == "30":
+        return activate_paid(username, 30)
+
+    if plan == "60":
+        return activate_paid(username, 60)
+
+    raise ValueError("INVALID_PLAN")
 
 
 # =========================
@@ -48,18 +52,14 @@ def activate_access(username: str, plan: str = "trial"):
 
 def extend_access(username: str, days: int):
     from services.user_service import extend_user
-
-    user = extend_user(username, days)
-
-    return user
+    return extend_user(username, days)
 
 
 # =========================
-# MANUAL SYNC (ADMIN ONLY)
+# SYNC
 # =========================
 
 def rebuild_access():
     from core.sync import full_sync
-
     full_sync()
     return "OK"
