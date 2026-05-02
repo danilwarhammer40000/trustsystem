@@ -1,5 +1,4 @@
-from aiogram import Router, types
-from aiogram.filters import Command
+from aiogram import Router, types, F
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 
@@ -14,21 +13,48 @@ router = Router()
 # =========================
 
 class ConnectState(StatesGroup):
+    choosing_plan = State()
     username = State()
 
 
 # =========================
-# START
+# OPEN MENU
 # =========================
 
-@router.message(Command("connect"))
-async def connect_start(message: types.Message, state: FSMContext):
+@router.message(F.text == "🚀 Подключить")
+async def connect_menu(message: types.Message, state: FSMContext):
+    await state.set_state(ConnectState.choosing_plan)
+
+    await message.answer(
+        "Выберите тариф:\n\n"
+        "🆓 trial — 3 дня\n"
+        "💳 30 — 30 дней\n"
+        "💳 60 — 60 дней\n\n"
+        "Отправьте: trial / 30 / 60"
+    )
+
+
+# =========================
+# SELECT PLAN
+# =========================
+
+@router.message(ConnectState.choosing_plan)
+async def select_plan(message: types.Message, state: FSMContext):
+
+    plan = (message.text or "").strip()
+
+    if plan not in ["trial", "30", "60"]:
+        await message.answer("❌ Неверный тариф")
+        return
+
+    await state.update_data(plan=plan)
     await state.set_state(ConnectState.username)
-    await message.answer("Введите username (3-20 символов, a-z, 0-9, _):")
+
+    await message.answer("Введите username (3-20 символов):")
 
 
 # =========================
-# PROCESS USERNAME
+# USERNAME
 # =========================
 
 @router.message(ConnectState.username)
@@ -37,44 +63,42 @@ async def process_username(message: types.Message, state: FSMContext):
     username = (message.text or "").strip()
     tg_id = message.from_user.id
 
-    # защита от пустого ввода
-    if not username:
-        await message.answer("❌ Введите username")
-        return
+    data = await state.get_data()
+    plan = data.get("plan")
 
     try:
         # создаём пользователя
-        create_user(
-            username=username,
-            tg_id=tg_id
-        )
+        create_user(username=username, tg_id=tg_id)
 
-        # активируем trial
-        activate_access(username, plan="trial")
+        # TRIAL — сразу активируем
+        if plan == "trial":
+            activate_access(username, plan="trial")
 
-        # получаем VPN
-        vpn = get_vpn_link(username)
+            vpn = get_vpn_link(username)
 
-        if not vpn:
-            await message.answer("❌ Ошибка получения VPN")
-            await state.clear()
-            return
+            await message.answer(
+                f"✅ Доступ выдан\n\n"
+                f"👤 {vpn['username']}\n"
+                f"🔑 {vpn['password']}\n"
+                f"🌐 {vpn['link']}\n"
+                f"⏳ {vpn['expires_at']}"
+            )
 
-        await message.answer(
-            f"✅ Доступ выдан\n\n"
-            f"👤 {vpn.get('username')}\n"
-            f"🔑 {vpn.get('password')}\n"
-            f"🌐 {vpn.get('link')}\n"
-            f"⏳ {vpn.get('expires_at')}"
-        )
+        else:
+            # платный тариф → в оплату
+            await state.update_data(username=username)
 
-        await state.clear()
+            await message.answer(
+                f"💳 Оплата тарифа {plan} дней\n"
+                f"Отправьте /pay для оплаты"
+            )
 
     except ValueError as e:
         await message.answer(f"❌ {str(e)}")
 
     except Exception as e:
-        # чтобы бот не "умирал молча"
-        await message.answer("❌ Внутренняя ошибка")
+        await message.answer("❌ Ошибка")
         print("CONNECT ERROR:", e)
+
+    finally:
         await state.clear()
