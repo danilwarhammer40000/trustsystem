@@ -140,3 +140,45 @@ def delete_user(username: str):
 
     save_users(users)
     full_sync()
+
+
+# =========================
+# ACTIVATE TRIAL
+# =========================
+
+def activate_trial(username: str):
+    users = load_users()
+
+    for u in users:
+        if u.get("username") == username:
+
+            if u.get("trial_used"):
+                raise ValueError("TRIAL_ALREADY_USED")
+
+            u["trial_used"] = True
+            u["plan"] = "trial"
+
+            save_users(users)
+
+            return extend_user(username, 3)
+
+    raise ValueError("USER_NOT_FOUND")
+
+
+# =========================
+# ACTIVATE PAID
+# =========================
+
+def activate_paid(username: str, days: int):
+    users = load_users()
+
+    for u in users:
+        if u.get("username") == username:
+
+            u["plan"] = f"{days}_days"
+
+            save_users(users)
+
+            return extend_user(username, days)
+
+    raise ValueError("USER_NOT_FOUND")
