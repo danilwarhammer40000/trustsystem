@@ -35,27 +35,38 @@ def get_user(username: str):
             return u
     return None
 
-
 # =========================
-# CREATE (FIXED)
+# CREATE (UPDATED)
 # =========================
 
-def create_user(username: str, password: str | None = None):
+def create_user(
+    username: str,
+    password: str | None = None,
+    tg_id: int | None = None
+):
     _validate_username(username)
 
     users = load_users()
 
+    # проверка username
     for u in users:
         if u.get("username") == username:
             raise ValueError("USERNAME_TAKEN")
 
+    # проверка telegram_id (если передан)
+    if tg_id is not None:
+        for u in users:
+            if u.get("telegram_id") == tg_id:
+                raise ValueError("TELEGRAM_ALREADY_LINKED")
+
+    # генерация пароля
     password = password if password and password != "-" else _generate_password()
 
     user = {
         "username": username,
         "password": password,
-        "telegram_id": None,
-        "plan": "manual",
+        "telegram_id": tg_id,  # теперь сохраняем
+        "plan": "trial" if tg_id else "manual",
         "status": "inactive",
         "trial_used": False,
         "created_at": datetime.utcnow().isoformat(),
@@ -69,8 +80,7 @@ def create_user(username: str, password: str | None = None):
 
     return user
 
-
-# =========================
+ =========================
 # EXTEND
 # =========================
 
