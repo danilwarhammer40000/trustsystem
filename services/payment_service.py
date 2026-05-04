@@ -1,7 +1,15 @@
 import uuid
-from yoomoney import Quickpay, Client
+from yookassa import Configuration, Payment
 
-from config.settings import YOOMONEY_RECEIVER
+from config.settings import YOOKASSA_SHOP_ID, YOOKASSA_API_KEY
+
+
+# =========================
+# CONFIG
+# =========================
+
+Configuration.account_id = YOOKASSA_SHOP_ID
+Configuration.secret_key = YOOKASSA_API_KEY
 
 
 # =========================
@@ -19,29 +27,28 @@ PRICES = {
 # =========================
 
 def create_payment(plan: str, username: str):
-    """
-    Создаёт платёж и возвращает ссылку
-    """
-
     if plan not in PRICES:
         raise ValueError("INVALID_PLAN")
 
     amount = PRICES[plan]
+    payment_id = str(uuid.uuid4())
 
-    label = f"{username}:{plan}:{uuid.uuid4().hex}"
-
-    quickpay = Quickpay(
-        receiver=YOOMONEY_RECEIVER,
-        quickpay_form="shop",
-        targets=f"VPN {plan} days",
-        paymentType="SB",  # СБП / карта
-        sum=amount,
-        label=label
-    )
+    payment = Payment.create({
+        "amount": {
+            "value": str(amount),
+            "currency": "RUB"
+        },
+        "confirmation": {
+            "type": "redirect",
+            "return_url": "https://t.me/your_bot"
+        },
+        "capture": True,
+        "description": f"{username} VPN {plan} days"
+    }, payment_id)
 
     return {
-        "url": quickpay.base_url,
-        "label": label,
+        "payment_id": payment.id,
+        "url": payment.confirmation.confirmation_url,
         "amount": amount
     }
 
@@ -50,18 +57,10 @@ def create_payment(plan: str, username: str):
 # CHECK PAYMENT
 # =========================
 
-def check_payment(token: str, label: str):
-    """
-    Проверка оплаты через API ЮMoney
-    token — это API токен кошелька
-    """
+def check_payment(payment_id: str):
+    payment = Payment.find_one(payment_id)
 
-    client = Client(token)
-
-    history = client.operation_history(label=label)
-
-    for op in history.operations:
-        if op.status == "success":
-            return True
+    if payment.status == "succeeded":
+        return True
 
     return False
