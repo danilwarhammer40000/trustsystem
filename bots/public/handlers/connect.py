@@ -1,127 +1,40 @@
-from aiogram import Router, types, F
-from aiogram.fsm.state import State, StatesGroup
+from aiogram import Router, types
 from aiogram.fsm.context import FSMContext
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
-from services.user_service import create_user
-from services.vpn_service import activate_access, get_vpn_link
+from bots.public.states.payment import PaymentState
 
 router = Router()
 
 
-# =========================
-# KEYBOARD
-# =========================
-
-cancel_kb = ReplyKeyboardMarkup(
-    keyboard=[[KeyboardButton(text="❌ Отмена")]],
-    resize_keyboard=True
-)
-
-
-# =========================
-# FSM
-# =========================
-
-class ConnectState(StatesGroup):
-    choosing_plan = State()
-    username = State()
-
-
-# =========================
-# CANCEL
-# =========================
-
-@router.message(F.text == "❌ Отмена")
-async def cancel(message: types.Message, state: FSMContext):
-    await state.clear()
-    await message.answer("❌ Действие отменено")
-
-
-# =========================
-# OPEN MENU
-# =========================
-
-@router.message(F.text == "🚀 Подключить")
-async def connect_menu(message: types.Message, state: FSMContext):
-    await state.set_state(ConnectState.choosing_plan)
-
-    await message.answer(
-        "Выберите тариф:\n\n"
-        "🆓 trial — 3 дня\n"
-        "💳 30 — 30 дней\n"
-        "💳 60 — 60 дней\n\n"
-        "Введите: trial / 30 / 60",
-        reply_markup=cancel_kb
+@router.message(lambda m: m.text == "🚀 Подключить")
+async def connect(message: types.Message, state: FSMContext):
+    kb = types.ReplyKeyboardMarkup(
+        keyboard=[
+            [types.KeyboardButton(text="🎁 3 дня")],
+            [types.KeyboardButton(text="💳 30 дней")],
+            [types.KeyboardButton(text="💳 60 дней")]
+        ],
+        resize_keyboard=True
     )
 
+    await state.set_state(PaymentState.choosing_plan)
+    await message.answer("Выберите тариф:", reply_markup=kb)
 
-# =========================
-# SELECT PLAN
-# =========================
 
-@router.message(ConnectState.choosing_plan)
-async def select_plan(message: types.Message, state: FSMContext):
+@router.message(PaymentState.choosing_plan)
+async def choose_plan(message: types.Message, state: FSMContext):
+    plans = {
+        "🎁 3 дня": "3",
+        "💳 30 дней": "30",
+        "💳 60 дней": "60"
+    }
 
-    plan = (message.text or "").strip()
+    plan = plans.get(message.text)
 
-    if plan not in ["trial", "30", "60"]:
-        await message.answer("❌ Неверный тариф")
-        return
+    if not plan:
+        return await message.answer("❌ Выберите тариф кнопкой")
 
     await state.update_data(plan=plan)
-    await state.set_state(ConnectState.username)
 
-    await message.answer(
-        "Введите username (3-20 символов):",
-        reply_markup=cancel_kb
-    )
-
-
-# =========================
-# USERNAME
-# =========================
-
-@router.message(ConnectState.username)
-async def process_username(message: types.Message, state: FSMContext):
-
-    username = (message.text or "").strip()
-    tg_id = message.from_user.id
-
-    data = await state.get_data()
-    plan = data.get("plan")
-
-    try:
-        create_user(username=username, tg_id=tg_id)
-
-        # сохраняем данные для оплаты (ВАЖНО!)
-        await state.update_data(username=username, plan=plan)
-
-        if plan == "trial":
-            activate_access(username, plan)
-
-            vpn = get_vpn_link(username)
-
-            await message.answer(
-                f"✅ Доступ выдан\n\n"
-                f"👤 {vpn['username']}\n"
-                f"🔑 {vpn['password']}\n"
-                f"🌐 {vpn['link']}\n"
-                f"⏳ {vpn['expires_at']}"
-            )
-
-            await state.clear()
-
-        else:
-            await message.answer(
-                f"💳 Оплата тарифа {plan} дней\n"
-                f"Нажмите /pay",
-                reply_markup=cancel_kb
-            )
-
-    except ValueError as e:
-        await message.answer(f"❌ {str(e)}")
-
-    except Exception as e:
-        await message.answer("❌ Ошибка")
-        print("CONNECT ERROR:", e)
+    await state.set_state(PaymentState.waiting_username)
+    await message.answer("Введите username (например: david):")
