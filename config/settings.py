@@ -11,15 +11,30 @@ PUBLIC_BOT_TOKEN = os.getenv("PUBLIC_BOT_TOKEN")
 # GENERAL SETTINGS
 # ======================
 
-DOMAIN = os.getenv("DOMAIN")
+DOMAIN = os.getenv("DOMAIN", "")
 
-# ADMIN TG ID (fallback = 0 если не задан)
-ADMIN_TG_ID_RAW = os.getenv("ADMIN_TG_ID", "0")
+# ======================
+# ADMIN TG ID (SAFE PARSE)
+# ======================
 
-try:
-    ADMIN_TG_ID = int(ADMIN_TG_ID_RAW)
-except ValueError:
-    raise ValueError(f"ADMIN_TG_ID must be int, got: {ADMIN_TG_ID_RAW}")
+ADMIN_TG_ID_RAW = os.getenv("ADMIN_TG_ID")
+
+def _parse_admin_id(value):
+    if value is None:
+        return 0
+
+    value = value.strip()
+
+    if value == "":
+        return 0
+
+    try:
+        return int(value)
+    except ValueError:
+        print(f"[WARNING] ADMIN_TG_ID invalid: {value}, fallback to 0")
+        return 0
+
+ADMIN_TG_ID = _parse_admin_id(ADMIN_TG_ID_RAW)
 
 # ======================
 # VALIDATION
