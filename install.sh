@@ -7,9 +7,9 @@ PROJECT_DIR="/opt/trustsystem"
 REPO_URL="https://github.com/danilwarhammer40000/trustsystem.git"
 
 # -------------------------
-# WAIT FOR APT LOCK (fix unattended-upgrades)
+# WAIT FOR APT LOCK
 # -------------------------
-echo "[0/7] Checking apt lock..."
+echo "[0/8] Checking apt lock..."
 
 while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
     echo "[INFO] Waiting for apt lock..."
@@ -19,7 +19,7 @@ done
 # -------------------------
 # DEPENDENCIES
 # -------------------------
-echo "[1/7] Installing dependencies..."
+echo "[1/8] Installing dependencies..."
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -29,7 +29,7 @@ apt install -y python3 python3-venv python3-pip git curl ca-certificates
 # -------------------------
 # REPO
 # -------------------------
-echo "[2/7] Repository..."
+echo "[2/8] Repository..."
 
 if [ -d "$PROJECT_DIR/.git" ]; then
     echo "[INFO] Updating repo..."
@@ -46,7 +46,7 @@ fi
 # -------------------------
 # VENV
 # -------------------------
-echo "[3/7] Python env..."
+echo "[3/8] Python env..."
 
 if [ ! -d "$PROJECT_DIR/venv" ]; then
     python3 -m venv "$PROJECT_DIR/venv"
@@ -57,10 +57,13 @@ source "$PROJECT_DIR/venv/bin/activate"
 pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 
+# 👉 ДОПОЛНИТЕЛЬНО ДЛЯ YOOMONEY
+pip install yoomoney httpx
+
 # -------------------------
 # CONFIG
 # -------------------------
-echo "[4/7] Configuration..."
+echo "[4/8] Configuration..."
 
 ENV_FILE="$PROJECT_DIR/.env"
 
@@ -74,16 +77,26 @@ is_valid_env() {
 
 create_env() {
     echo ""
+
     read -r -p "ADMIN_BOT_TOKEN: " ADMIN_BOT_TOKEN
     read -r -p "PUBLIC_BOT_TOKEN: " PUBLIC_BOT_TOKEN
     read -r -p "ADMIN_TG_ID: " ADMIN_TG_ID
     read -r -p "DOMAIN: " DOMAIN
+
+    echo ""
+    echo "=== YooMoney Setup ==="
+    read -r -p "YOOMONEY_RECEIVER (кошелек или shopId): " YOOMONEY_RECEIVER
+    read -r -p "YOOMONEY_TOKEN (если нет — Enter): " YOOMONEY_TOKEN
 
     cat > "$ENV_FILE" <<EOF
 ADMIN_BOT_TOKEN=$ADMIN_BOT_TOKEN
 PUBLIC_BOT_TOKEN=$PUBLIC_BOT_TOKEN
 ADMIN_TG_ID=$ADMIN_TG_ID
 DOMAIN=$DOMAIN
+
+YOOMONEY_RECEIVER=$YOOMONEY_RECEIVER
+YOOMONEY_TOKEN=$YOOMONEY_TOKEN
+
 PYTHONPATH=$PROJECT_DIR
 EOF
 
@@ -113,7 +126,7 @@ fi
 # -------------------------
 # SYSTEMD INSTALL
 # -------------------------
-echo "[5/7] Installing systemd..."
+echo "[5/8] Installing systemd..."
 
 install_unit () {
     local name=$1
@@ -143,7 +156,7 @@ systemctl enable trustsystem-expire.timer
 # -------------------------
 # START
 # -------------------------
-echo "[6/7] Starting services..."
+echo "[6/8] Starting services..."
 
 systemctl restart trustsystem-admin.service
 systemctl restart trustsystem-public.service
@@ -152,7 +165,7 @@ systemctl start trustsystem-expire.timer
 # -------------------------
 # STATUS
 # -------------------------
-echo "[7/7] Status..."
+echo "[7/8] Status..."
 
 systemctl status trustsystem-admin.service --no-pager || true
 systemctl status trustsystem-public.service --no-pager || true
