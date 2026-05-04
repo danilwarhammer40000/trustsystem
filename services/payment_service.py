@@ -1,7 +1,6 @@
 import uuid
 import json
 from yookassa import Configuration, Payment
-
 from config.settings import YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY
 
 Configuration.account_id = YOOKASSA_SHOP_ID
@@ -23,15 +22,29 @@ def save(data):
         json.dump(data, f, indent=2)
 
 
-def create_payment(plan, username):
-    prices = {"30": 199, "60": 349}
-    amount = prices[plan]
+def create_payment(plan: str, username: str):
+
+    prices = {
+        "30": 199,
+        "60": 349
+    }
+
+    amount = prices.get(plan)
+    if not amount:
+        raise ValueError("INVALID_PLAN")
 
     payment = Payment.create({
         "amount": {"value": str(amount), "currency": "RUB"},
-        "confirmation": {"type": "redirect", "return_url": "https://t.me/your_bot"},
+        "confirmation": {
+            "type": "redirect",
+            "return_url": "https://t.me/your_bot"
+        },
         "capture": True,
-        "description": f"{username}:{plan}"
+        "description": f"VPN {plan}",
+        "metadata": {
+            "username": username,
+            "plan": plan
+        }
     }, uuid.uuid4())
 
     data = load()
@@ -51,7 +64,7 @@ def create_payment(plan, username):
     }
 
 
-def mark_paid(payment_id):
+def mark_paid(payment_id: str):
     data = load()
 
     for p in data:
