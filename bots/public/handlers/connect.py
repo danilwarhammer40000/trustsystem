@@ -1,6 +1,5 @@
 from aiogram import Router, types
 from aiogram.fsm.context import FSMContext
-
 from bots.public.states.payment import PaymentState
 
 router = Router()
@@ -8,6 +7,7 @@ router = Router()
 
 @router.message(lambda m: m.text == "🚀 Подключить")
 async def connect(message: types.Message, state: FSMContext):
+
     kb = types.ReplyKeyboardMarkup(
         keyboard=[
             [types.KeyboardButton(text="🎁 3 дня")],
@@ -23,6 +23,7 @@ async def connect(message: types.Message, state: FSMContext):
 
 @router.message(PaymentState.choosing_plan)
 async def choose_plan(message: types.Message, state: FSMContext):
+
     plans = {
         "🎁 3 дня": "3",
         "💳 30 дней": "30",
@@ -32,9 +33,9 @@ async def choose_plan(message: types.Message, state: FSMContext):
     plan = plans.get(message.text)
 
     if not plan:
-        return await message.answer("❌ Выберите тариф кнопкой")
+        return await message.answer("Выберите кнопку")
 
     await state.update_data(plan=plan)
-
     await state.set_state(PaymentState.waiting_username)
-    await message.answer("Введите username (например: david):")
+
+    await message.answer("Введите username:")
