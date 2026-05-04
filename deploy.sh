@@ -7,7 +7,7 @@ PROJECT_DIR="/opt/trustsystem"
 cd "$PROJECT_DIR"
 
 # =========================
-# 0. ENV BACKUP (CRITICAL)
+# 0. ENV BACKUP
 # =========================
 echo "[0] Backing up .env..."
 
@@ -18,31 +18,29 @@ if [ -f ".env" ]; then
 fi
 
 # =========================
-# 1. GIT UPDATE (SAFE RESET)
+# 1. UPDATE CODE
 # =========================
 echo "[1] Updating repository..."
 
 git fetch origin
 git reset --hard origin/main
 
-# restore env after reset
 if [ -f "$ENV_BACKUP" ]; then
     cp "$ENV_BACKUP" ".env"
 fi
 
 # =========================
-# 2. CLEAN UNTRACKED (SAFE MODE)
+# 2. CLEAN
 # =========================
 echo "[2] Cleaning untracked files..."
 
 git clean -fd \
   -e venv \
   -e storage \
-  -e .env \
-  -e logs
+  -e .env
 
 # =========================
-# 3. VENV (ROBUST)
+# 3. VENV
 # =========================
 echo "[3] Virtual environment setup..."
 
@@ -54,12 +52,10 @@ source venv/bin/activate
 
 pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
-
-# payment deps safety
 pip install yookassa httpx --quiet || true
 
 # =========================
-# 4. STORAGE SAFETY LAYER
+# 4. STORAGE SAFETY
 # =========================
 echo "[4] Storage integrity check..."
 
@@ -69,20 +65,25 @@ if [ ! -f storage/users.json ]; then
     echo "[]" > storage/users.json
 fi
 
-# validate JSON integrity
-python3 - <<EOF || {
+# SAFE JSON VALIDATION (FIXED)
+python3 - <<'EOF'
 import json
+
+path = "storage/users.json"
+
 try:
-    json.load(open("storage/users.json"))
+    with open(path, "r") as f:
+        json.load(f)
     print("users.json OK")
-except:
-    print("CORRUPTED → resetting users.json")
-    open("storage/users.json", "w").write("[]")
-}
+
+except Exception:
+    print("CORRUPTED users.json → RESETTING")
+    with open(path, "w") as f:
+        f.write("[]")
 EOF
 
 # =========================
-# 5. ZERO-DOWNTIME RESTART
+# 5. RESTART
 # =========================
 echo "[5] Restarting services..."
 
@@ -90,9 +91,9 @@ systemctl restart trustsystem-admin.service
 systemctl restart trustsystem-public.service
 
 # =========================
-# 6. STATUS CHECK
+# 6. STATUS
 # =========================
-echo "[6] Service status:"
+echo "[6] STATUS"
 
 systemctl is-active trustsystem-admin.service
 systemctl is-active trustsystem-public.service
