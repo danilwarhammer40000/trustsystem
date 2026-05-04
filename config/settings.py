@@ -51,3 +51,11 @@ if ":" not in ADMIN_BOT_TOKEN:
 
 if ":" not in PUBLIC_BOT_TOKEN:
     raise ValueError("PUBLIC_BOT_TOKEN format is invalid")
+
+
+# ======================
+# PAYMENTS
+# ======================
+
+YOOMONEY_RECEIVER = os.getenv("YOOMONEY_RECEIVER")
+YOOMONEY_TOKEN = os.getenv("YOOMONEY_TOKEN", "")
