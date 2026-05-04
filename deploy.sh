@@ -24,16 +24,23 @@ echo "[3] Cleaning untracked files..."
 git clean -fd -e venv -e storage
 
 # =========================
-# 4. VENV SETUP (REBUILD SAFE)
+# 4. VENV SETUP (100% SAFE)
 # =========================
 echo "[4] Setting up venv..."
 
-if [ ! -d "venv" ]; then
-    echo "[*] Creating venv..."
+if [ ! -d "venv" ] || [ ! -f "venv/bin/activate" ]; then
+    echo "[*] Recreating venv..."
+    rm -rf venv
     python3 -m venv venv
 fi
 
-source venv/bin/activate
+# активируем только если существует
+if [ -f "venv/bin/activate" ]; then
+    source venv/bin/activate
+else
+    echo "❌ venv activation failed"
+    exit 1
+fi
 
 pip install --upgrade pip
 pip install -r requirements.txt
