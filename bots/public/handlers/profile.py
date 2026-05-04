@@ -19,8 +19,9 @@ async def profile(message: types.Message):
         return
 
     await message.answer(
-        f"👤 {user['username']}\n"
-        f"📦 {user['plan']}\n"
-        f"📊 {user['status']}\n"
-        f"⏳ {user['expires_at']}"
-    )
+    f"👤 {user['username']}\n"
+    f"📦 {user['plan']}\n"
+    f"📊 {user['status']}\n"
+    f"⏳ {user['expires_at']}\n\n"
+    f"Для продления нажмите 🚀 Подключить"
+)
