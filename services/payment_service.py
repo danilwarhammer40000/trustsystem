@@ -17,8 +17,8 @@ Configuration.secret_key = YOOKASSA_API_KEY
 # =========================
 
 PRICES = {
-    "30": 199,
-    "60": 349
+    "30": 180,
+    "60": 300
 }
 
 
