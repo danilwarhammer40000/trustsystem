@@ -6,7 +6,16 @@ echo "=== DEPLOY START ==="
 
 PROJECT_DIR="/opt/trustsystem"
 
-cd $PROJECT_DIR
+cd "$PROJECT_DIR"
+
+# =========================
+# 0. PROTECT .ENV (HARD SAFETY)
+# =========================
+echo "[0] Protecting .env..."
+
+if [ -f .env ]; then
+    cp .env /tmp/trustsystem.env.backup
+fi
 
 # =========================
 # 1. FETCH LATEST CODE
@@ -17,14 +26,23 @@ git fetch origin
 echo "[2] Hard reset to origin/main..."
 git reset --hard origin/main
 
-# =========================
-# 3. REMOVE UNTRACKED FILES (SAFE)
-# =========================
-echo "[3] Cleaning untracked files..."
-git clean -fd -e venv -e storage
+# restore env after reset (SAFETY NET)
+if [ -f /tmp/trustsystem.env.backup ]; then
+    cp /tmp/trustsystem.env.backup .env
+fi
 
 # =========================
-# 4. VENV SETUP (100% SAFE)
+# 2. CLEAN UNTRACKED FILES (SAFE MODE)
+# =========================
+echo "[3] Cleaning untracked files..."
+
+git clean -fd \
+  -e venv \
+  -e storage \
+  -e .env
+
+# =========================
+# 3. VENV SETUP (SAFE)
 # =========================
 echo "[4] Setting up venv..."
 
@@ -34,19 +52,13 @@ if [ ! -d "venv" ] || [ ! -f "venv/bin/activate" ]; then
     python3 -m venv venv
 fi
 
-# активируем только если существует
-if [ -f "venv/bin/activate" ]; then
-    source venv/bin/activate
-else
-    echo "❌ venv activation failed"
-    exit 1
-fi
+source venv/bin/activate
 
 pip install --upgrade pip
 pip install -r requirements.txt
 
 # =========================
-# 5. SAFE STORAGE CHECK
+# 4. STORAGE CHECK
 # =========================
 echo "[5] Checking storage..."
 
@@ -57,7 +69,7 @@ if [ ! -f storage/users.json ]; then
 fi
 
 # =========================
-# 6. RESTART SERVICES
+# 5. RESTART SERVICES
 # =========================
 echo "[6] Restarting services..."
 
@@ -65,7 +77,7 @@ systemctl restart trustsystem-admin
 systemctl restart trustsystem-public
 
 # =========================
-# 7. STATUS
+# 6. STATUS
 # =========================
 echo "=== DEPLOY COMPLETE ==="
 
