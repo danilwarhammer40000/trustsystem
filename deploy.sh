@@ -1,24 +1,37 @@
 #!/bin/bash
+set -e
 
 echo "=== DEPLOY START ==="
 
-cd /opt/trustsystem || exit
+PROJECT_DIR="/opt/trustsystem"
 
-echo "[1] Pulling updates..."
-git pull origin main
+cd "$PROJECT_DIR" || exit 1
 
-echo "[2] Activating venv..."
+echo "[1] Fetching updates..."
+git fetch origin
+
+echo "[2] Resetting local changes..."
+git reset --hard origin/main
+
+echo "[3] Cleaning untracked files..."
+git clean -fd
+
+echo "[4] Activating venv..."
 source venv/bin/activate
 
-echo "[3] Installing dependencies..."
+echo "[5] Installing dependencies..."
+pip install --upgrade pip
 pip install -r requirements.txt
 
-echo "[4] Restarting services..."
-systemctl restart trustsystem-admin
-systemctl restart trustsystem-public
+# если используешь YooKassa
+pip install yookassa httpx || true
 
-echo "[5] Status:"
-systemctl is-active trustsystem-admin
-systemctl is-active trustsystem-public
+echo "[6] Restarting services..."
+systemctl restart trustsystem-admin.service
+systemctl restart trustsystem-public.service
+
+echo "[7] Status:"
+systemctl is-active trustsystem-admin.service
+systemctl is-active trustsystem-public.service
 
 echo "=== DEPLOY DONE ==="
