@@ -3,24 +3,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+def env(name: str, default=None, required: bool = False):
+    value = os.getenv(name, default)
 
-# ======================
-# SAFE ENV LOADER
-# ======================
-
-def env(name: str, default=None, required=False, cast=None):
-    value = os.getenv(name)
-
-    if value is None or value == "":
-        if required:
-            raise RuntimeError(f"{name} missing")
-        return default
-
-    if cast:
-        try:
-            return cast(value)
-        except Exception:
-            raise RuntimeError(f"{name} invalid format")
+    if required and (value is None or value == ""):
+        raise RuntimeError(f"{name} missing")
 
     return value
 
@@ -32,35 +19,33 @@ def env(name: str, default=None, required=False, cast=None):
 ADMIN_BOT_TOKEN = env("ADMIN_BOT_TOKEN", required=True)
 PUBLIC_BOT_TOKEN = env("PUBLIC_BOT_TOKEN", required=True)
 
-
 # ======================
 # GENERAL SETTINGS
 # ======================
 
 DOMAIN = env("DOMAIN", default="")
 
+# safe parse int
+ADMIN_TG_ID_RAW = env("ADMIN_TG_ID", default="0")
+try:
+    ADMIN_TG_ID = int(ADMIN_TG_ID_RAW) if ADMIN_TG_ID_RAW else 0
+except:
+    ADMIN_TG_ID = 0
+
 
 # ======================
-# ADMIN SETTINGS
-# ======================
-
-ADMIN_TG_ID = env("ADMIN_TG_ID", default="0", cast=int)
-
-
-# ======================
-# YOOKASSA
+# YOOKASSA (optional)
 # ======================
 
 YOOKASSA_SHOP_ID = env("YOOKASSA_SHOP_ID", default="")
 YOOKASSA_API_KEY = env("YOOKASSA_API_KEY", default="")
 
-
 # ======================
-# VALIDATION (STRICT ONLY FOR TOKENS)
+# VALIDATION (soft)
 # ======================
 
 if ":" not in ADMIN_BOT_TOKEN:
-    raise RuntimeError("ADMIN_BOT_TOKEN invalid format")
+    raise RuntimeError("ADMIN_BOT_TOKEN invalid")
 
 if ":" not in PUBLIC_BOT_TOKEN:
-    raise RuntimeError("PUBLIC_BOT_TOKEN invalid format")
+    raise RuntimeError("PUBLIC_BOT_TOKEN invalid")
