@@ -4,38 +4,41 @@ set -euo pipefail
 echo "=== TRUSTSYSTEM PRODUCTION DEPLOY ==="
 
 PROJECT_DIR="/opt/trustsystem"
-SYSTEMD_DIR="$PROJECT_DIR/systemd"
-SYSTEMD_TARGET="/etc/systemd/system"
-
+SYSTEMD_DIR="/etc/systemd/system"
 cd "$PROJECT_DIR"
 
 # =========================
-# 0. ENV BACKUP
+# 0. BACKUPS
 # =========================
-echo "[0] Backing up .env..."
+echo "[0] Backups..."
 
 ENV_BACKUP="/tmp/trustsystem.env.backup"
+USERS_BACKUP="/tmp/users.json.backup"
 
-if [ -f ".env" ]; then
-    cp ".env" "$ENV_BACKUP"
-fi
+[ -f ".env" ] && cp ".env" "$ENV_BACKUP"
+[ -f "storage/users.json" ] && cp "storage/users.json" "$USERS_BACKUP"
 
 # =========================
-# 1. UPDATE CODE
+# 1. GIT UPDATE + LOG
 # =========================
 echo "[1] Updating repository..."
 
 git fetch origin
+
+echo "----- INCOMING CHANGES -----"
+git log HEAD..origin/main --oneline || true
+
+echo "----- FILE CHANGES -----"
+git diff --name-status HEAD origin/main || true
+
 git reset --hard origin/main
 
-if [ -f "$ENV_BACKUP" ]; then
-    cp "$ENV_BACKUP" ".env"
-fi
+[ -f "$ENV_BACKUP" ] && cp "$ENV_BACKUP" ".env"
 
 # =========================
 # 2. CLEAN
 # =========================
-echo "[2] Cleaning untracked files..."
+echo "[2] Cleaning..."
 
 git clean -fd \
   -e venv \
@@ -45,7 +48,7 @@ git clean -fd \
 # =========================
 # 3. VENV
 # =========================
-echo "[3] Virtual environment setup..."
+echo "[3] Python environment..."
 
 if [ ! -d "venv" ]; then
     python3 -m venv venv
@@ -58,44 +61,37 @@ pip install -r requirements.txt
 pip install yookassa httpx --quiet || true
 
 # =========================
-# 4. STORAGE SAFETY
+# 4. STORAGE SAFE
 # =========================
-echo "[4] Storage integrity check..."
+echo "[4] Storage check..."
 
 mkdir -p storage
 
-# backup перед проверкой
-if [ -f storage/users.json ]; then
-    cp storage/users.json /tmp/users.json.backup || true
-fi
-
-# если нет файла — создаём
 if [ ! -f storage/users.json ]; then
     echo "[]" > storage/users.json
 fi
 
-# безопасная проверка + восстановление
 python3 - <<'EOF'
-import json
-import shutil
-import os
+import json, shutil, os
 
 path = "storage/users.json"
-backup = "/tmp/users.json.backup"
+backup = "storage/users.backup.json"
+
+if os.path.exists(path):
+    shutil.copy(path, backup)
 
 try:
-    with open(path, "r") as f:
+    with open(path) as f:
         json.load(f)
     print("users.json OK")
 
 except Exception:
-    print("CORRUPTED users.json")
+    print("CORRUPTED users.json → RESTORING")
 
     if os.path.exists(backup):
-        print("RESTORING FROM BACKUP")
         shutil.copy(backup, path)
     else:
-        print("NO BACKUP → RESET")
+        print("NO BACKUP → EMPTY FILE")
         with open(path, "w") as f:
             f.write("[]")
 EOF
@@ -105,56 +101,53 @@ EOF
 # =========================
 echo "[5] Installing systemd services..."
 
-for file in "$SYSTEMD_DIR"/*; do
+for file in systemd/*; do
     name=$(basename "$file")
 
-    if [ ! -f "$SYSTEMD_TARGET/$name" ]; then
+    if [ ! -f "$SYSTEMD_DIR/$name" ]; then
         echo "Installing $name"
-        cp "$file" "$SYSTEMD_TARGET/$name"
+        cp "$file" "$SYSTEMD_DIR/$name"
     else
         echo "Updating $name"
-        cp "$file" "$SYSTEMD_TARGET/$name"
+        cp "$file" "$SYSTEMD_DIR/$name"
     fi
 done
 
-# перезагрузка systemd
 systemctl daemon-reexec
 systemctl daemon-reload
 
-# =========================
-# 6. ENABLE SERVICES & TIMERS
-# =========================
-echo "[6] Enabling services and timers..."
-
-for file in "$SYSTEMD_DIR"/*; do
+# enable timers/services
+for file in systemd/*; do
     name=$(basename "$file")
 
-    if [[ "$name" == *.service ]]; then
+    if [[ "$name" == *.service ]] || [[ "$name" == *.timer ]]; then
         systemctl enable "$name" || true
-    fi
-
-    if [[ "$name" == *.timer ]]; then
-        systemctl enable "$name" || true
-        systemctl start "$name" || true
     fi
 done
 
 # =========================
-# 7. RESTART SERVICES
+# 6. RESTART
 # =========================
-echo "[7] Restarting services..."
+echo "[6] Restarting services..."
 
 systemctl restart trustsystem-admin.service || true
 systemctl restart trustsystem-public.service || true
 systemctl restart trustsystem-webhook.service || true
 
-# =========================
-# 8. STATUS
-# =========================
-echo "[8] STATUS"
+# timers
+systemctl restart trustsystem-expire.timer || true
+systemctl restart trustsystem-sync.timer || true
 
-systemctl is-active trustsystem-admin.service || true
-systemctl is-active trustsystem-public.service || true
-systemctl is-active trustsystem-webhook.service || true
+# =========================
+# 7. STATUS
+# =========================
+echo "[7] STATUS"
+
+systemctl is-active trustsystem-admin.service
+systemctl is-active trustsystem-public.service
+systemctl is-active trustsystem-webhook.service
+
+echo "----- TIMERS -----"
+systemctl list-timers --all | grep trustsystem || true
 
 echo "=== DEPLOY COMPLETE ==="
