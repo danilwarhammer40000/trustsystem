@@ -28,8 +28,8 @@ def save(data):
 def create_payment(plan: str, tg_id: int):
 
     prices = {
-        "30": 199,
-        "60": 349
+        "30": 10,
+        "60": 20
     }
 
     amount = prices.get(plan)
