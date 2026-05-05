@@ -1,22 +1,20 @@
 from aiogram import Router, types
-from services.public_user_service import get_user_by_tg
+from services.public_user_service import get_by_tg
 
 router = Router()
-
 
 @router.message(lambda m: m.text == "👤 Профиль")
 async def profile(message: types.Message):
 
-    user = get_user_by_tg(message.from_user.id)
+    user = get_by_tg(message.from_user.id)
 
     if not user:
-        return await message.answer("Нет профиля")
+        return await message.answer("Нет активного доступа")
 
-    status = "🟢 Active" if user["status"] == "active" else "🔴 Inactive"
+    status = "🟢 Активен" if user["status"] == "active" else "🔴 Неактивен"
 
     await message.answer(
-        f"👤 Profile\n\n"
-        f"User: {user['username']}\n"
-        f"Status: {status}\n"
-        f"Expires: {user.get('expires_at')}"
+        f"👤 Профиль\n\n"
+        f"Статус: {status}\n"
+        f"До: {user.get('expires_at')}"
     )
