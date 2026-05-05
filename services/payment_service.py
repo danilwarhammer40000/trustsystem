@@ -12,10 +12,6 @@ Configuration.secret_key = YOOKASSA_SECRET_KEY
 FILE = "storage/payments.json"
 
 
-# =========================
-# STORAGE
-# =========================
-
 def load():
     try:
         with open(FILE) as f:
@@ -28,10 +24,6 @@ def save(data):
     with open(FILE, "w") as f:
         json.dump(data, f, indent=2)
 
-
-# =========================
-# CREATE PAYMENT
-# =========================
 
 def create_payment(plan: str, tg_id: int):
 
@@ -47,10 +39,7 @@ def create_payment(plan: str, tg_id: int):
     username = f"user_{tg_id}"
 
     payment = Payment.create({
-        "amount": {
-            "value": str(amount),
-            "currency": "RUB"
-        },
+        "amount": {"value": str(amount), "currency": "RUB"},
         "confirmation": {
             "type": "redirect",
             "return_url": "https://t.me/your_bot"
@@ -83,10 +72,6 @@ def create_payment(plan: str, tg_id: int):
         "payment_id": payment.id
     }
 
-
-# =========================
-# MARK PAID (WEBHOOK)
-# =========================
 
 def mark_paid(payment_id: str):
     data = load()
