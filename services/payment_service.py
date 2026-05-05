@@ -7,7 +7,7 @@ from config.settings import YOOKASSA_SHOP_ID, YOOKASSA_API_KEY
 
 
 Configuration.account_id = YOOKASSA_SHOP_ID
-Configuration.secret_key = YOOKASSA_SECRET_KEY
+Configuration.secret_key = YOOKASSA_API_KEY
 
 FILE = "storage/payments.json"
 
