@@ -2,6 +2,7 @@ from aiogram import Router, types
 
 from services.payment_service import create_payment
 from services.public_user_service import get_or_create
+from services.user_service import activate_trial
 
 router = Router()
 
@@ -28,8 +29,7 @@ async def buy(message: types.Message):
     tg_id = message.from_user.id
     plan = "30" if "30" in message.text else "60"
 
-    # создаём пользователя
-    get_or_create(tg_id)
+    user = get_or_create(tg_id)
 
     payment = create_payment(plan, tg_id)
 
@@ -43,12 +43,14 @@ async def buy(message: types.Message):
 @router.message(lambda m: m.text == "🎁 3 дня")
 async def trial(message: types.Message):
 
-    from services.vpn_service import activate_access
-
     tg_id = message.from_user.id
-    username = f"user_{tg_id}"
 
-    activate_access(username, "3")
+    user = get_or_create(tg_id)
+
+    try:
+        activate_trial(user["username"])
+    except ValueError:
+        return await message.answer("❌ Триал уже использован")
 
     await message.answer(
         "🎁 Тестовый доступ активирован на 3 дня"
