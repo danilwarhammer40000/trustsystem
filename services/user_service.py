@@ -35,37 +35,31 @@ def get_user(username: str):
             return u
     return None
 
+
 # =========================
-# CREATE (UPDATED)
+# CREATE USER
 # =========================
 
-def create_user(
-    username: str,
-    password: str | None = None,
-    tg_id: int | None = None
-):
+def create_user(username: str, password: str | None = None, tg_id: int | None = None):
     _validate_username(username)
 
     users = load_users()
 
-    # проверка username
     for u in users:
         if u.get("username") == username:
             raise ValueError("USERNAME_TAKEN")
 
-    # проверка telegram_id (если передан)
     if tg_id is not None:
         for u in users:
             if u.get("telegram_id") == tg_id:
-                raise ValueError("TELEGRAM_ALREADY_LINKED")
+                return u  # уже существует → НЕ падаем
 
-    # генерация пароля
     password = password if password and password != "-" else _generate_password()
 
     user = {
         "username": username,
         "password": password,
-        "telegram_id": tg_id,  # теперь сохраняем
+        "telegram_id": tg_id,
         "plan": "trial" if tg_id else "manual",
         "status": "inactive",
         "trial_used": False,
@@ -75,13 +69,13 @@ def create_user(
 
     users.append(user)
     save_users(users)
-
     full_sync()
 
     return user
 
+
 # =========================
-# EXTEND
+# EXTEND USER
 # =========================
 
 def extend_user(username: str, days: int):
@@ -92,11 +86,9 @@ def extend_user(username: str, days: int):
 
             now = datetime.utcnow()
 
-            # FIX ∞
             if days == 0:
                 u["status"] = "active"
                 u["expires_at"] = "2099-12-31T23:59:59"
-
                 save_users(users)
                 full_sync()
                 return u
@@ -122,7 +114,7 @@ def extend_user(username: str, days: int):
 
 
 # =========================
-# MANUAL DATE
+# SET EXPIRE
 # =========================
 
 def set_expire(username: str, dt: datetime):
@@ -153,7 +145,7 @@ def delete_user(username: str):
 
 
 # =========================
-# ACTIVATE TRIAL
+# TRIAL (FIXED)
 # =========================
 
 def activate_trial(username: str):
@@ -167,16 +159,19 @@ def activate_trial(username: str):
 
             u["trial_used"] = True
             u["plan"] = "trial"
+            u["status"] = "active"
+
+            u["expires_at"] = (datetime.utcnow() + timedelta(days=3)).isoformat()
 
             save_users(users)
-
-            return extend_user(username, 3)
+            full_sync()
+            return u
 
     raise ValueError("USER_NOT_FOUND")
 
 
 # =========================
-# ACTIVATE PAID
+# PAID
 # =========================
 
 def activate_paid(username: str, days: int):
@@ -188,6 +183,7 @@ def activate_paid(username: str, days: int):
             u["plan"] = f"{days}_days"
 
             save_users(users)
+            full_sync()
 
             return extend_user(username, days)
 
