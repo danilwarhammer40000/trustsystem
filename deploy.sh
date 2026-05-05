@@ -19,18 +19,11 @@ USERS_BACKUP="/tmp/users.json.backup"
 [ -f "storage/users.json" ] && cp "storage/users.json" "$USERS_BACKUP"
 
 # =========================
-# 1. GIT UPDATE + LOG
+# 1. GIT UPDATE
 # =========================
 echo "[1] Updating repository..."
 
 git fetch origin
-
-echo "----- INCOMING CHANGES -----"
-git log HEAD..origin/main --oneline || true
-
-echo "----- FILE CHANGES -----"
-git diff --name-status HEAD origin/main || true
-
 git reset --hard origin/main
 
 [ -f "$ENV_BACKUP" ] && cp "$ENV_BACKUP" ".env"
@@ -99,24 +92,17 @@ EOF
 # =========================
 # 5. INSTALL SYSTEMD
 # =========================
-echo "[5] Installing systemd services..."
+echo "[5] Installing systemd..."
 
 for file in systemd/*; do
     name=$(basename "$file")
-
-    if [ ! -f "$SYSTEMD_DIR/$name" ]; then
-        echo "Installing $name"
-        cp "$file" "$SYSTEMD_DIR/$name"
-    else
-        echo "Updating $name"
-        cp "$file" "$SYSTEMD_DIR/$name"
-    fi
+    cp "$file" "$SYSTEMD_DIR/$name"
 done
 
 systemctl daemon-reexec
 systemctl daemon-reload
 
-# enable timers/services
+# enable services/timers
 for file in systemd/*; do
     name=$(basename "$file")
 
@@ -128,26 +114,22 @@ done
 # =========================
 # 6. RESTART
 # =========================
-echo "[6] Restarting services..."
+echo "[6] Restarting..."
 
 systemctl restart trustsystem-admin.service || true
 systemctl restart trustsystem-public.service || true
 systemctl restart trustsystem-webhook.service || true
 
-# timers
 systemctl restart trustsystem-expire.timer || true
 systemctl restart trustsystem-sync.timer || true
 
 # =========================
 # 7. STATUS
 # =========================
-echo "[7] STATUS"
+echo "[7] Status"
 
 systemctl is-active trustsystem-admin.service
 systemctl is-active trustsystem-public.service
 systemctl is-active trustsystem-webhook.service
-
-echo "----- TIMERS -----"
-systemctl list-timers --all | grep trustsystem || true
 
 echo "=== DEPLOY COMPLETE ==="
