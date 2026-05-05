@@ -89,6 +89,7 @@ echo "[5] Restarting services..."
 
 systemctl restart trustsystem-admin.service
 systemctl restart trustsystem-public.service
+systemctl restart trustsystem-webhook
 
 # =========================
 # 6. STATUS
