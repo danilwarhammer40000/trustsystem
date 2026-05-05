@@ -23,23 +23,20 @@ async def yookassa_webhook(request: Request):
         payment = mark_paid(payment_id)
 
         if payment:
-            # 1. активируем VPN
             activate_access(
                 payment["username"],
                 payment["plan"]
             )
 
-            # 2. получаем пользователя
             user = get_by_tg(payment["tg_id"])
 
             if user:
-                # 3. отправляем доступ
                 await bot.send_message(
                     chat_id=payment["tg_id"],
                     text=(
-                        "✅ Оплата прошла успешно\n\n"
-                        "🔐 VPN активирован\n\n"
-                        f"📅 Тариф: {payment['plan']} дней\n"
+                        "✅ Оплата прошла\n\n"
+                        "🔐 VPN активирован\n"
+                        f"📅 {payment['plan']} дней\n"
                         f"⏳ До: {user.get('expires_at')}"
                     )
                 )
