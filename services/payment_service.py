@@ -92,4 +92,15 @@ def mark_paid(payment_id: str):
     data = load()
 
     for p in data:
-        if p["id
+        if p["id"] == payment_id:
+
+            if p["status"] == "paid":
+                return None
+
+            p["status"] = "paid"
+            p["paid_at"] = datetime.utcnow().isoformat()
+
+            save(data)
+            return p
+
+    return None
