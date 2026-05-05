@@ -4,6 +4,9 @@ set -euo pipefail
 echo "=== TRUSTSYSTEM PRODUCTION DEPLOY ==="
 
 PROJECT_DIR="/opt/trustsystem"
+SYSTEMD_DIR="$PROJECT_DIR/systemd"
+SYSTEMD_TARGET="/etc/systemd/system"
+
 cd "$PROJECT_DIR"
 
 # =========================
@@ -61,15 +64,24 @@ echo "[4] Storage integrity check..."
 
 mkdir -p storage
 
+# backup перед проверкой
+if [ -f storage/users.json ]; then
+    cp storage/users.json /tmp/users.json.backup || true
+fi
+
+# если нет файла — создаём
 if [ ! -f storage/users.json ]; then
     echo "[]" > storage/users.json
 fi
 
-# SAFE JSON VALIDATION (FIXED)
+# безопасная проверка + восстановление
 python3 - <<'EOF'
 import json
+import shutil
+import os
 
 path = "storage/users.json"
+backup = "/tmp/users.json.backup"
 
 try:
     with open(path, "r") as f:
@@ -77,26 +89,72 @@ try:
     print("users.json OK")
 
 except Exception:
-    print("CORRUPTED users.json → RESETTING")
-    with open(path, "w") as f:
-        f.write("[]")
+    print("CORRUPTED users.json")
+
+    if os.path.exists(backup):
+        print("RESTORING FROM BACKUP")
+        shutil.copy(backup, path)
+    else:
+        print("NO BACKUP → RESET")
+        with open(path, "w") as f:
+            f.write("[]")
 EOF
 
 # =========================
-# 5. RESTART
+# 5. INSTALL SYSTEMD
 # =========================
-echo "[5] Restarting services..."
+echo "[5] Installing systemd services..."
 
-systemctl restart trustsystem-admin.service
-systemctl restart trustsystem-public.service
-systemctl restart trustsystem-webhook
+for file in "$SYSTEMD_DIR"/*; do
+    name=$(basename "$file")
+
+    if [ ! -f "$SYSTEMD_TARGET/$name" ]; then
+        echo "Installing $name"
+        cp "$file" "$SYSTEMD_TARGET/$name"
+    else
+        echo "Updating $name"
+        cp "$file" "$SYSTEMD_TARGET/$name"
+    fi
+done
+
+# перезагрузка systemd
+systemctl daemon-reexec
+systemctl daemon-reload
 
 # =========================
-# 6. STATUS
+# 6. ENABLE SERVICES & TIMERS
 # =========================
-echo "[6] STATUS"
+echo "[6] Enabling services and timers..."
 
-systemctl is-active trustsystem-admin.service
-systemctl is-active trustsystem-public.service
+for file in "$SYSTEMD_DIR"/*; do
+    name=$(basename "$file")
+
+    if [[ "$name" == *.service ]]; then
+        systemctl enable "$name" || true
+    fi
+
+    if [[ "$name" == *.timer ]]; then
+        systemctl enable "$name" || true
+        systemctl start "$name" || true
+    fi
+done
+
+# =========================
+# 7. RESTART SERVICES
+# =========================
+echo "[7] Restarting services..."
+
+systemctl restart trustsystem-admin.service || true
+systemctl restart trustsystem-public.service || true
+systemctl restart trustsystem-webhook.service || true
+
+# =========================
+# 8. STATUS
+# =========================
+echo "[8] STATUS"
+
+systemctl is-active trustsystem-admin.service || true
+systemctl is-active trustsystem-public.service || true
+systemctl is-active trustsystem-webhook.service || true
 
 echo "=== DEPLOY COMPLETE ==="
