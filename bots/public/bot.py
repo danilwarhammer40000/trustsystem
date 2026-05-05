@@ -5,7 +5,14 @@ from redis.asyncio import Redis
 
 from config.settings import PUBLIC_BOT_TOKEN
 
-from bots.public.handlers import start, profile, cancel
+# импорт всех роутеров
+from bots.public.handlers import (
+    start,
+    connect,
+    payments,
+    profile,
+    cancel
+)
 
 redis = Redis(host="localhost", port=6379)
 storage = RedisStorage(redis)
@@ -13,7 +20,7 @@ storage = RedisStorage(redis)
 bot = Bot(token=PUBLIC_BOT_TOKEN)
 dp = Dispatcher(storage=storage)
 
-# регистрация роутеров
+# регистрация роутеров (порядок важен)
 dp.include_router(start.router)
 dp.include_router(connect.router)
 dp.include_router(payments.router)
