@@ -5,7 +5,7 @@ from redis.asyncio import Redis
 
 from config.settings import PUBLIC_BOT_TOKEN
 
-from bots.public.handlers import start, connect, payments, profile, cancel
+from bots.public.handlers import start, profile, cancel
 
 redis = Redis(host="localhost", port=6379)
 storage = RedisStorage(redis)
