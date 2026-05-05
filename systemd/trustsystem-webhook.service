@@ -1,0 +1,12 @@
+[Unit]
+Description=TrustSystem Webhook
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/opt/trustsystem
+ExecStart=/opt/trustsystem/venv/bin/python run_webhook.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
