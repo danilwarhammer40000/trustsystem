@@ -1,13 +1,20 @@
 import uuid
 import json
+from datetime import datetime
+
 from yookassa import Configuration, Payment
 from config.settings import YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY
+
 
 Configuration.account_id = YOOKASSA_SHOP_ID
 Configuration.secret_key = YOOKASSA_SECRET_KEY
 
 FILE = "storage/payments.json"
 
+
+# =========================
+# STORAGE
+# =========================
 
 def load():
     try:
@@ -22,7 +29,11 @@ def save(data):
         json.dump(data, f, indent=2)
 
 
-def create_payment(plan: str, username: str):
+# =========================
+# CREATE PAYMENT
+# =========================
+
+def create_payment(plan: str, tg_id: int):
 
     prices = {
         "30": 199,
@@ -33,17 +44,23 @@ def create_payment(plan: str, username: str):
     if not amount:
         raise ValueError("INVALID_PLAN")
 
+    username = f"user_{tg_id}"
+
     payment = Payment.create({
-        "amount": {"value": str(amount), "currency": "RUB"},
+        "amount": {
+            "value": str(amount),
+            "currency": "RUB"
+        },
         "confirmation": {
             "type": "redirect",
             "return_url": "https://t.me/your_bot"
         },
         "capture": True,
-        "description": f"VPN {plan}",
+        "description": "VPN access",
         "metadata": {
-            "username": username,
-            "plan": plan
+            "tg_id": str(tg_id),
+            "plan": plan,
+            "username": username
         }
     }, uuid.uuid4())
 
@@ -51,27 +68,28 @@ def create_payment(plan: str, username: str):
 
     data.append({
         "id": payment.id,
+        "tg_id": tg_id,
         "username": username,
         "plan": plan,
-        "status": "pending"
+        "status": "pending",
+        "created_at": datetime.utcnow().isoformat()
     })
 
     save(data)
 
     return {
         "url": payment.confirmation.confirmation_url,
-        "amount": amount
+        "amount": amount,
+        "payment_id": payment.id
     }
 
+
+# =========================
+# MARK PAID (WEBHOOK)
+# =========================
 
 def mark_paid(payment_id: str):
     data = load()
 
     for p in data:
-        if p["id"] == payment_id:
-            if p["status"] == "paid":
-                return False
-            p["status"] = "paid"
-
-    save(data)
-    return True
+        if p["id
