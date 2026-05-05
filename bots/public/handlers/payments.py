@@ -1,9 +1,7 @@
-from aiogram import Router, types
 
 from services.payment_service import create_payment
 from services.public_user_service import get_or_create
 
-router = Router()
 
 @router.message(lambda m: m.text in ["💳 30 дней", "💳 60 дней"])
 async def buy(message: types.Message):
