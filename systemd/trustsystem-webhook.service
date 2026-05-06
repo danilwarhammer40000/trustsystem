@@ -5,6 +5,7 @@ After=network.target
 [Service]
 User=root
 WorkingDirectory=/opt/trustsystem
+Environment=PYTHONPATH=/opt/trustsystem
 ExecStart=/opt/trustsystem/webhook_venv/bin/python run_webhook.py
 Restart=always
 
