@@ -1,13 +1,28 @@
 [Unit]
 Description=TrustSystem Webhook
-After=network.target
+After=network.target redis.service
 
 [Service]
+Type=simple
 User=root
 WorkingDirectory=/opt/trustsystem
+
+# общий python path проекта
 Environment=PYTHONPATH=/opt/trustsystem
-ExecStart=/opt/trustsystem/webhook_venv/bin/python run_webhook.py
+
+# используем единый venv (ВАЖНО)
+ExecStart=/opt/trustsystem/venv/bin/python run_webhook.py
+
 Restart=always
+RestartSec=3
+
+# логирование в systemd journal
+StandardOutput=journal
+StandardError=journal
+
+# защита от падений окружения
+KillSignal=SIGINT
+TimeoutStopSec=30
 
 [Install]
 WantedBy=multi-user.target
