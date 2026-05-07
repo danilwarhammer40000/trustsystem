@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Request
 from aiogram import Bot
+
 from config.settings import PUBLIC_BOT_TOKEN
 from services.vpn_service import activate_access
-from services.public_user_service import get_by_tg
+from services.public_user_service import get_or_create
 
 router = APIRouter()
 bot = Bot(token=PUBLIC_BOT_TOKEN)
@@ -10,7 +11,10 @@ bot = Bot(token=PUBLIC_BOT_TOKEN)
 
 @router.post("/webhook/yookassa")
 async def yookassa_webhook(request: Request):
-    data = await request.json()
+    try:
+        data = await request.json()
+    except Exception:
+        return {"status": "bad_json"}
 
     event = data.get("event")
     obj = data.get("object", {})
@@ -27,13 +31,21 @@ async def yookassa_webhook(request: Request):
     if not all([username, plan, tg_id]):
         return {"status": "missing_metadata"}
 
-    # 1. активируем VPN
-    user = activate_access(username, plan)
+    # создаём пользователя (если нет)
+    user_db = get_or_create(int(tg_id))
 
-    # 2. обновляем пользователя
-    db_user = get_by_tg(int(tg_id))
+    # активируем VPN
+    try:
+        user = activate_access(username, plan)
+    except ValueError as e:
+        return {"status": "error", "message": str(e)}
+    except Exception as e:
+        return {"status": "error", "message": f"internal_error: {e}"}
 
-    # 3. уведомляем в Telegram
+    if not user:
+        return {"status": "error", "message": "ACTIVATION_FAILED"}
+
+    # отправка в Telegram
     try:
         await bot.send_message(
             chat_id=int(tg_id),
