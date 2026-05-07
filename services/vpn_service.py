@@ -34,6 +34,9 @@ def get_vpn_link(username: str):
 def activate_access(username: str, plan: str):
     from services.user_service import activate_trial, activate_paid
 
+    if not username:
+        raise ValueError("NO_USERNAME")
+
     if plan == "trial":
         return activate_trial(username)
 
@@ -43,7 +46,7 @@ def activate_access(username: str, plan: str):
     if plan == "60":
         return activate_paid(username, 60)
 
-    raise ValueError("INVALID_PLAN")
+    raise ValueError(f"INVALID_PLAN: {plan}")
 
 
 # =========================
