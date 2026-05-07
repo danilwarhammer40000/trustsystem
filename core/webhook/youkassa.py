@@ -19,20 +19,35 @@ async def yookassa_webhook(request: Request):
     event = data.get("event")
     obj = data.get("object", {})
 
+    # принимаем только успешную оплату
     if event != "payment.succeeded":
         return {"status": "ignored"}
 
     meta = obj.get("metadata", {})
 
-    username = meta.get("username")
-    plan = meta.get("plan")
     tg_id = meta.get("tg_id")
+    plan = meta.get("plan")
 
-    if not all([username, plan, tg_id]):
+    # проверяем обязательные поля
+    if not tg_id or not plan:
         return {"status": "missing_metadata"}
 
-    # создаём пользователя (если нет)
-    user_db = get_or_create(int(tg_id))
+    try:
+        tg_id = int(tg_id)
+    except Exception:
+        return {"status": "invalid_tg_id"}
+
+    # получаем или создаём пользователя
+    user_db = get_or_create(tg_id)
+
+    if not user_db:
+        return {"status": "user_create_failed"}
+
+    # берём username ТОЛЬКО из БД
+    username = user_db.get("username")
+
+    if not username:
+        return {"status": "no_username_in_db"}
 
     # активируем VPN
     try:
@@ -45,10 +60,10 @@ async def yookassa_webhook(request: Request):
     if not user:
         return {"status": "error", "message": "ACTIVATION_FAILED"}
 
-    # отправка в Telegram
+    # отправка уведомления
     try:
         await bot.send_message(
-            chat_id=int(tg_id),
+            chat_id=tg_id,
             text=(
                 "✅ Оплата подтверждена\n\n"
                 "🔐 VPN активирован\n"
