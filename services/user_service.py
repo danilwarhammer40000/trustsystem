@@ -4,12 +4,7 @@ import string
 import re
 
 from core.db import load_users, save_users
-from core.sync import full_sync
 
-
-# =========================
-# HELPERS
-# =========================
 
 def _generate_password(length: int = 12):
     alphabet = string.ascii_letters + string.digits
@@ -21,10 +16,6 @@ def _validate_username(username: str):
         raise ValueError("INVALID_USERNAME")
 
 
-# =========================
-# GETTERS
-# =========================
-
 def get_all_users():
     return load_users()
 
@@ -35,10 +26,6 @@ def get_user(username: str):
             return u
     return None
 
-
-# =========================
-# CREATE USER
-# =========================
 
 def create_user(username: str, password: str | None = None, tg_id: int | None = None):
     _validate_username(username)
@@ -52,7 +39,7 @@ def create_user(username: str, password: str | None = None, tg_id: int | None = 
     if tg_id is not None:
         for u in users:
             if u.get("telegram_id") == tg_id:
-                return u  # уже существует → НЕ падаем
+                return u
 
     password = password if password and password != "-" else _generate_password()
 
@@ -69,14 +56,9 @@ def create_user(username: str, password: str | None = None, tg_id: int | None = 
 
     users.append(user)
     save_users(users)
-    full_sync()
 
     return user
 
-
-# =========================
-# EXTEND USER
-# =========================
 
 def extend_user(username: str, days: int):
     users = load_users()
@@ -90,7 +72,6 @@ def extend_user(username: str, days: int):
                 u["status"] = "active"
                 u["expires_at"] = "2099-12-31T23:59:59"
                 save_users(users)
-                full_sync()
                 return u
 
             base = now
@@ -107,15 +88,10 @@ def extend_user(username: str, days: int):
             u["expires_at"] = (base + timedelta(days=days)).isoformat()
 
             save_users(users)
-            full_sync()
             return u
 
     raise ValueError("USER_NOT_FOUND")
 
-
-# =========================
-# SET EXPIRE
-# =========================
 
 def set_expire(username: str, dt: datetime):
     users = load_users()
@@ -126,27 +102,16 @@ def set_expire(username: str, dt: datetime):
             u["status"] = "active" if dt > datetime.utcnow() else "inactive"
 
             save_users(users)
-            full_sync()
             return u
 
     raise ValueError("USER_NOT_FOUND")
 
 
-# =========================
-# DELETE
-# =========================
-
 def delete_user(username: str):
     users = load_users()
     users = [u for u in users if u.get("username") != username]
-
     save_users(users)
-    full_sync()
 
-
-# =========================
-# TRIAL (FIXED)
-# =========================
 
 def activate_trial(username: str):
     users = load_users()
@@ -160,19 +125,13 @@ def activate_trial(username: str):
             u["trial_used"] = True
             u["plan"] = "trial"
             u["status"] = "active"
-
             u["expires_at"] = (datetime.utcnow() + timedelta(days=3)).isoformat()
 
             save_users(users)
-            full_sync()
             return u
 
     raise ValueError("USER_NOT_FOUND")
 
-
-# =========================
-# PAID
-# =========================
 
 def activate_paid(username: str, days: int):
     users = load_users()
@@ -181,9 +140,7 @@ def activate_paid(username: str, days: int):
         if u.get("username") == username:
 
             u["plan"] = f"{days}_days"
-
             save_users(users)
-            full_sync()
 
             return extend_user(username, days)
 
