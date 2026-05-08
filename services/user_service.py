@@ -6,6 +6,10 @@ import re
 from core.db import load_users, save_users
 
 
+# =========================
+# INTERNAL HELPERS
+# =========================
+
 def _generate_password(length: int = 12):
     alphabet = string.ascii_letters + string.digits
     return "".join(secrets.choice(alphabet) for _ in range(length))
@@ -16,26 +20,41 @@ def _validate_username(username: str):
         raise ValueError("INVALID_USERNAME")
 
 
+def _save(users):
+    save_users(users)
+
+
+# =========================
+# READ
+# =========================
+
 def get_all_users():
     return load_users()
 
 
 def get_user(username: str):
-    for u in load_users():
+    users = load_users()
+    for u in users:
         if u.get("username") == username:
             return u
     return None
 
+
+# =========================
+# CREATE
+# =========================
 
 def create_user(username: str, password: str | None = None, tg_id: int | None = None):
     _validate_username(username)
 
     users = load_users()
 
+    # check username unique
     for u in users:
         if u.get("username") == username:
             raise ValueError("USERNAME_TAKEN")
 
+    # attach telegram if already exists
     if tg_id is not None:
         for u in users:
             if u.get("telegram_id") == tg_id:
@@ -55,10 +74,14 @@ def create_user(username: str, password: str | None = None, tg_id: int | None = 
     }
 
     users.append(user)
-    save_users(users)
+    _save(users)
 
     return user
 
+
+# =========================
+# CORE TIME LOGIC
+# =========================
 
 def extend_user(username: str, days: int):
     users = load_users()
@@ -68,14 +91,16 @@ def extend_user(username: str, days: int):
 
             now = datetime.utcnow()
 
+            # unlimited access
             if days == 0:
                 u["status"] = "active"
                 u["expires_at"] = "2099-12-31T23:59:59"
-                save_users(users)
+                _save(users)
                 return u
 
             base = now
 
+            # extend from current expiry if valid
             if u.get("expires_at"):
                 try:
                     old = datetime.fromisoformat(u["expires_at"])
@@ -84,10 +109,12 @@ def extend_user(username: str, days: int):
                 except:
                     pass
 
-            u["status"] = "active"
-            u["expires_at"] = (base + timedelta(days=days)).isoformat()
+            new_expiry = base + timedelta(days=days)
 
-            save_users(users)
+            u["status"] = "active"
+            u["expires_at"] = new_expiry.isoformat()
+
+            _save(users)
             return u
 
     raise ValueError("USER_NOT_FOUND")
@@ -98,10 +125,11 @@ def set_expire(username: str, dt: datetime):
 
     for u in users:
         if u.get("username") == username:
+
             u["expires_at"] = dt.isoformat()
             u["status"] = "active" if dt > datetime.utcnow() else "inactive"
 
-            save_users(users)
+            _save(users)
             return u
 
     raise ValueError("USER_NOT_FOUND")
@@ -110,8 +138,12 @@ def set_expire(username: str, dt: datetime):
 def delete_user(username: str):
     users = load_users()
     users = [u for u in users if u.get("username") != username]
-    save_users(users)
+    _save(users)
 
+
+# =========================
+# TRIAL
+# =========================
 
 def activate_trial(username: str):
     users = load_users()
@@ -127,11 +159,15 @@ def activate_trial(username: str):
             u["status"] = "active"
             u["expires_at"] = (datetime.utcnow() + timedelta(days=3)).isoformat()
 
-            save_users(users)
+            _save(users)
             return u
 
     raise ValueError("USER_NOT_FOUND")
 
+
+# =========================
+# PAID PLAN (FIXED)
+# =========================
 
 def activate_paid(username: str, days: int):
     users = load_users()
@@ -139,9 +175,14 @@ def activate_paid(username: str, days: int):
     for u in users:
         if u.get("username") == username:
 
+            # IMPORTANT:
+            # план обновляется ОДИН РАЗ и синхронно со статусом
             u["plan"] = f"{days}_days"
-            save_users(users)
 
-            return extend_user(username, days)
+            # используем extend_user как единственный источник логики времени
+            updated = extend_user(username, days)
+
+            # extend_user уже сделал save_users → не дублируем
+            return updated
 
     raise ValueError("USER_NOT_FOUND")
