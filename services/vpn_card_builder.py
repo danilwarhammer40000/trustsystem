@@ -1,5 +1,4 @@
 from datetime import datetime
-
 from services.vpn_service import get_vpn_link
 
 
@@ -14,22 +13,27 @@ def _format_date(dt_str: str | None) -> str:
         return dt_str
 
 
-def build_vpn_card(username: str) -> dict:
-    """
-    Возвращает структурированную VPN-карточку
-    для Telegram/бота/webhook.
-    """
+def _extract_username_from_link(link: str) -> str:
+    try:
+        return link.rstrip("/").split("/")[-1]
+    except:
+        return ""
 
+
+def build_vpn_card(username: str) -> dict:
     vpn = get_vpn_link(username)
 
     link = vpn.get("link", "")
     password = vpn.get("password", "")
     expires_at = _format_date(vpn.get("expires_at"))
 
-    # извлекаем payload для QR
-    qr_payload = ""
-    if "tt://?" in link:
-        qr_payload = link.split("tt://?")[-1]
+    # FIX: универсальный QR payload
+    # теперь не зависит от tt://
+    qr_payload = f"user={username}"
+
+    # если вдруг появится токенизация — расширяем здесь
+    if "connect/" in link:
+        qr_payload = _extract_username_from_link(link)
 
     card_text = (
         f"👤 {username}\n"
