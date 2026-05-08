@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-echo "=== TrustSystem Production Installer ==="
+echo "=== TrustSystem Production Installer (fixed) ==="
 
 PROJECT_DIR="/opt/trustsystem"
 REPO_URL="https://github.com/danilwarhammer40000/trustsystem.git"
@@ -44,10 +44,14 @@ fi
 source "$PROJECT_DIR/venv/bin/activate"
 
 pip install --upgrade pip setuptools wheel
+
+# СТАВИМ ТОЛЬКО requirements (без перетирания)
 pip install -r requirements.txt
 
-# core deps
-pip install yookassa httpx redis fastapi uvicorn aiogram
+# доп зависимости (если их нет в requirements)
+pip install yookassa httpx redis
+
+deactivate
 
 echo "[5/9] Webhook venv..."
 WEBHOOK_DIR="$PROJECT_DIR/webhook_service"
@@ -60,58 +64,73 @@ fi
 
 source "$WEBHOOK_DIR/venv/bin/activate"
 
-pip install fastapi uvicorn aiogram httpx redis yookassa
+pip install --upgrade pip
+pip install fastapi uvicorn httpx redis yookassa
 
-deactivate || true
+deactivate
 
 echo "[6/9] ENV setup..."
 
 ENV_FILE="$PROJECT_DIR/.env"
 
+echo ""
+read -r -p "ADMIN_BOT_TOKEN: " ADMIN_BOT_TOKEN
+read -r -p "PUBLIC_BOT_TOKEN: " PUBLIC_BOT_TOKEN
+read -r -p "ADMIN_TG_ID: " ADMIN_TG_ID
+read -r -p "DOMAIN: " DOMAIN
+
+echo ""
+echo "=== YooKassa ==="
+read -r -p "YOOKASSA_SHOP_ID: " YOOKASSA_SHOP_ID
+read -r -p "YOOKASSA_API_KEY: " YOOKASSA_API_KEY
+
 cat > "$ENV_FILE" <<EOF
 PYTHONPATH=$PROJECT_DIR
 
-ADMIN_BOT_TOKEN=
-PUBLIC_BOT_TOKEN=
-ADMIN_TG_ID=
-DOMAIN=
+ADMIN_BOT_TOKEN=$ADMIN_BOT_TOKEN
+PUBLIC_BOT_TOKEN=$PUBLIC_BOT_TOKEN
+ADMIN_TG_ID=$ADMIN_TG_ID
+DOMAIN=$DOMAIN
 
-YOOKASSA_SHOP_ID=
-YOOKASSA_API_KEY=
+YOOKASSA_SHOP_ID=$YOOKASSA_SHOP_ID
+YOOKASSA_API_KEY=$YOOKASSA_API_KEY
 
 REDIS_HOST=127.0.0.1
 REDIS_PORT=6379
 EOF
 
 chmod 600 "$ENV_FILE"
+echo "[OK] .env saved"
 
 echo "[7/9] Systemd services..."
 
 install_service () {
-    cp "$PROJECT_DIR/systemd/$1" "/etc/systemd/system/$1"
-    chmod 644 "/etc/systemd/system/$1"
+    if [ -f "$PROJECT_DIR/systemd/$1" ]; then
+        cp "$PROJECT_DIR/systemd/$1" "/etc/systemd/system/$1"
+        chmod 644 "/etc/systemd/system/$1"
+        systemctl enable "$1"
+        echo "[OK] $1 installed"
+    else
+        echo "[SKIP] $1 not found"
+    fi
 }
 
 install_service trustsystem-admin.service
 install_service trustsystem-public.service
 install_service trustsystem-expire.service
+install_service trustsystem-expire.timer
 install_service trustsystem-webhook.service
 install_service trusttunnel.service
 
 systemctl daemon-reload
 
-systemctl enable trustsystem-admin.service
-systemctl enable trustsystem-public.service
-systemctl enable trustsystem-expire.service
-systemctl enable trustsystem-webhook.service
-systemctl enable trusttunnel.service
-
 echo "[8/9] Restart services..."
 
 systemctl restart redis-server
-systemctl restart trustsystem-admin.service
-systemctl restart trustsystem-public.service
-systemctl restart trustsystem-webhook.service
+
+systemctl restart trustsystem-admin.service || true
+systemctl restart trustsystem-public.service || true
+systemctl restart trustsystem-webhook.service || true
 
 echo "[9/9] DONE"
 echo "Check logs:"
