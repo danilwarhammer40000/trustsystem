@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-echo "=== TrustSystem Production Installer (fixed) ==="
+echo "=== TrustSystem Production Installer (final) ==="
 
 PROJECT_DIR="/opt/trustsystem"
 REPO_URL="https://github.com/danilwarhammer40000/trustsystem.git"
@@ -24,7 +24,7 @@ echo "[2/9] Enable Redis..."
 systemctl enable redis-server
 systemctl restart redis-server
 
-echo "[3/9] Clone repository..."
+echo "[3/9] Repository..."
 if [ -d "$PROJECT_DIR/.git" ]; then
     cd "$PROJECT_DIR"
     git fetch origin
@@ -32,11 +32,11 @@ if [ -d "$PROJECT_DIR/.git" ]; then
 else
     rm -rf "$PROJECT_DIR"
     git clone "$REPO_URL" "$PROJECT_DIR"
+    cd "$PROJECT_DIR"
 fi
 
-cd "$PROJECT_DIR"
-
 echo "[4/9] Main venv..."
+
 if [ ! -d "$PROJECT_DIR/venv" ]; then
     python3 -m venv "$PROJECT_DIR/venv"
 fi
@@ -44,19 +44,16 @@ fi
 source "$PROJECT_DIR/venv/bin/activate"
 
 pip install --upgrade pip setuptools wheel
-
-# СТАВИМ ТОЛЬКО requirements (без перетирания)
 pip install -r requirements.txt
 
-# доп зависимости (если их нет в requirements)
+# доп зависимости (не ломая requirements)
 pip install yookassa httpx redis
 
 deactivate
 
 echo "[5/9] Webhook venv..."
-WEBHOOK_DIR="$PROJECT_DIR/webhook_service"
 
-mkdir -p "$WEBHOOK_DIR"
+WEBHOOK_DIR="$PROJECT_DIR/webhook_service"
 
 if [ ! -d "$WEBHOOK_DIR/venv" ]; then
     python3 -m venv "$WEBHOOK_DIR/venv"
@@ -69,7 +66,7 @@ pip install fastapi uvicorn httpx redis yookassa
 
 deactivate
 
-echo "[6/9] ENV setup..."
+echo "[6/9] Configuration..."
 
 ENV_FILE="$PROJECT_DIR/.env"
 
@@ -81,6 +78,7 @@ read -r -p "DOMAIN: " DOMAIN
 
 echo ""
 echo "=== YooKassa ==="
+
 read -r -p "YOOKASSA_SHOP_ID: " YOOKASSA_SHOP_ID
 read -r -p "YOOKASSA_API_KEY: " YOOKASSA_API_KEY
 
@@ -104,34 +102,66 @@ echo "[OK] .env saved"
 
 echo "[7/9] Systemd services..."
 
-install_service () {
-    if [ -f "$PROJECT_DIR/systemd/$1" ]; then
-        cp "$PROJECT_DIR/systemd/$1" "/etc/systemd/system/$1"
-        chmod 644 "/etc/systemd/system/$1"
-        systemctl enable "$1"
-        echo "[OK] $1 installed"
-    else
-        echo "[SKIP] $1 not found"
-    fi
+install_unit () {
+    cp "$PROJECT_DIR/systemd/$1" "/etc/systemd/system/$1"
+    chmod 644 "/etc/systemd/system/$1"
 }
 
-install_service trustsystem-admin.service
-install_service trustsystem-public.service
-install_service trustsystem-expire.service
-install_service trustsystem-expire.timer
-install_service trustsystem-webhook.service
-install_service trusttunnel.service
+# services
+install_unit trustsystem-admin.service
+install_unit trustsystem-public.service
+install_unit trustsystem-expire.service
+install_unit trustsystem-webhook.service
+install_unit trustsystem-sync.service
+
+# timers
+install_unit trustsystem-expire.timer
+install_unit trustsystem-sync.timer
 
 systemctl daemon-reload
 
-echo "[8/9] Restart services..."
+# enable services
+systemctl enable trustsystem-admin.service
+systemctl enable trustsystem-public.service
+systemctl enable trustsystem-expire.service
+systemctl enable trustsystem-webhook.service
+systemctl enable trustsystem-sync.service
+
+# enable timers
+systemctl enable trustsystem-expire.timer
+systemctl enable trustsystem-sync.timer
+
+echo "[8/9] Starting services..."
 
 systemctl restart redis-server
 
-systemctl restart trustsystem-admin.service || true
-systemctl restart trustsystem-public.service || true
-systemctl restart trustsystem-webhook.service || true
+systemctl restart trustsystem-admin.service
+systemctl restart trustsystem-public.service
+systemctl restart trustsystem-webhook.service
+systemctl restart trustsystem-sync.service
 
-echo "[9/9] DONE"
-echo "Check logs:"
+# timers запускаются через start
+systemctl start trustsystem-expire.timer
+systemctl start trustsystem-sync.timer
+
+echo "[9/9] Status report"
+
+echo ""
+echo "=== SERVICES ==="
+systemctl status trustsystem-admin.service --no-pager || true
+systemctl status trustsystem-public.service --no-pager || true
+systemctl status trustsystem-webhook.service --no-pager || true
+systemctl status trustsystem-sync.service --no-pager || true
+
+echo ""
+echo "=== TIMERS ==="
+systemctl list-timers | grep trustsystem || true
+
+echo ""
+echo "=== REDIS ==="
+systemctl status redis-server --no-pager || true
+
+echo ""
+echo "=== DONE ==="
+echo "Logs:"
 echo "journalctl -u trustsystem-webhook -f"
