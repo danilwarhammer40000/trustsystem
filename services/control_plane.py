@@ -2,11 +2,11 @@ from contextlib import contextmanager
 from filelock import FileLock
 
 from services.user_service import (
-    create_user,
     activate_trial,
     activate_paid,
     extend_user,
-    get_user
+    get_user,
+    create_user
 )
 
 from core.sync import full_sync
@@ -21,10 +21,6 @@ def control_lock():
         yield
 
 
-# =========================
-# ACTIVATE PAID (WEBHOOK)
-# =========================
-
 def activate_paid_plan(username: str, plan: str):
     with control_lock():
 
@@ -37,36 +33,27 @@ def activate_paid_plan(username: str, plan: str):
         else:
             raise ValueError(f"INVALID_PLAN: {plan}")
 
-        full_sync()
+    # sync OUTSIDE lock (важно!)
+    full_sync()
 
-        return user
+    return user
 
-
-# =========================
-# TRIAL
-# =========================
 
 def activate_trial_plan(username: str):
     with control_lock():
         user = activate_trial(username)
-        full_sync()
-        return user
 
+    full_sync()
+    return user
 
-# =========================
-# EXTEND
-# =========================
 
 def extend_plan(username: str, days: int):
     with control_lock():
         user = extend_user(username, days)
-        full_sync()
-        return user
 
+    full_sync()
+    return user
 
-# =========================
-# CREATE USER SAFE
-# =========================
 
 def ensure_user(username: str, tg_id: int):
     with control_lock():
@@ -77,6 +64,5 @@ def ensure_user(username: str, tg_id: int):
 
         user = create_user(username=username, tg_id=tg_id)
 
-        full_sync()
-
-        return user
+    full_sync()
+    return user
