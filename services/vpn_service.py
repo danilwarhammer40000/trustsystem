@@ -1,12 +1,7 @@
 from core.generator import generate_link
 from config.settings import DOMAIN
-
 from services.user_service import get_user
 
-
-# =========================
-# VPN LINK
-# =========================
 
 def get_vpn_link(username: str):
     user = get_user(username)
@@ -25,44 +20,3 @@ def get_vpn_link(username: str):
         "link": link,
         "expires_at": user.get("expires_at")
     }
-
-
-# =========================
-# ACTIVATE ACCESS
-# =========================
-
-def activate_access(username: str, plan: str):
-    from services.user_service import activate_trial, activate_paid
-
-    if not username:
-        raise ValueError("NO_USERNAME")
-
-    if plan == "trial":
-        return activate_trial(username)
-
-    if plan == "30":
-        return activate_paid(username, 30)
-
-    if plan == "60":
-        return activate_paid(username, 60)
-
-    raise ValueError(f"INVALID_PLAN: {plan}")
-
-
-# =========================
-# EXTEND ACCESS
-# =========================
-
-def extend_access(username: str, days: int):
-    from services.user_service import extend_user
-    return extend_user(username, days)
-
-
-# =========================
-# SYNC
-# =========================
-
-def rebuild_access():
-    from core.sync import full_sync
-    full_sync()
-    return "OK"
