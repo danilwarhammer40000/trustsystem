@@ -12,9 +12,13 @@ Configuration.secret_key = YOOKASSA_API_KEY
 FILE = "storage/payments.json"
 
 
+# =========================
+# STORAGE
+# =========================
+
 def load():
     try:
-        with open(FILE) as f:
+        with open(FILE, "r") as f:
             return json.load(f)
     except:
         return []
@@ -24,6 +28,10 @@ def save(data):
     with open(FILE, "w") as f:
         json.dump(data, f, indent=2)
 
+
+# =========================
+# PAYMENT CREATE
+# =========================
 
 def create_payment(plan: str, tg_id: int):
 
@@ -39,7 +47,10 @@ def create_payment(plan: str, tg_id: int):
     username = f"user_{tg_id}"
 
     payment = Payment.create({
-        "amount": {"value": str(amount), "currency": "RUB"},
+        "amount": {
+            "value": str(amount),
+            "currency": "RUB"
+        },
         "confirmation": {
             "type": "redirect",
             "return_url": "https://t.me/your_bot"
@@ -61,7 +72,8 @@ def create_payment(plan: str, tg_id: int):
         "username": username,
         "plan": plan,
         "status": "pending",
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.utcnow().isoformat(),
+        "paid_at": None
     })
 
     save(data)
@@ -73,14 +85,19 @@ def create_payment(plan: str, tg_id: int):
     }
 
 
+# =========================
+# PAYMENT STATUS
+# =========================
+
 def mark_paid(payment_id: str):
     data = load()
 
     for p in data:
-        if p["id"] == payment_id:
+        if p.get("id") == payment_id:
 
-            if p["status"] == "paid":
-                return None
+            # idempotency
+            if p.get("status") == "paid":
+                return p
 
             p["status"] = "paid"
             p["paid_at"] = datetime.utcnow().isoformat()
@@ -89,3 +106,13 @@ def mark_paid(payment_id: str):
             return p
 
     return None
+
+
+def is_paid(payment_id: str) -> bool:
+    data = load()
+
+    for p in data:
+        if p.get("id") == payment_id:
+            return p.get("status") == "paid"
+
+    return False
