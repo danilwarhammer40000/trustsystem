@@ -46,25 +46,11 @@ source "$PROJECT_DIR/venv/bin/activate"
 pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 
-# доп зависимости (не ломая requirements)
-pip install yookassa httpx redis
+# ВСЕ зависимости в один venv (включая webhook)
+pip install yookassa httpx redis fastapi uvicorn aiogram
 
 deactivate
 
-echo "[5/9] Webhook venv..."
-
-WEBHOOK_DIR="$PROJECT_DIR/webhook_service"
-
-if [ ! -d "$WEBHOOK_DIR/venv" ]; then
-    python3 -m venv "$WEBHOOK_DIR/venv"
-fi
-
-source "$WEBHOOK_DIR/venv/bin/activate"
-
-pip install --upgrade pip
-pip install fastapi uvicorn httpx redis yookassa
-
-deactivate
 
 echo "[6/9] Configuration..."
 
