@@ -77,7 +77,6 @@ def ensure_user(username: str, tg_id: int):
 
         user = create_user(username=username, tg_id=tg_id)
 
-        # ⚠️ sync ТОЛЬКО после полной операции
         full_sync()
 
         return user
