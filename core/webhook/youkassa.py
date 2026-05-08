@@ -4,7 +4,6 @@ from aiogram import Bot
 from config.settings import PUBLIC_BOT_TOKEN
 from services.control_plane import activate_paid_plan
 from services.public_user_service import get_or_create
-from services.vpn_service import get_vpn_card
 
 router = APIRouter()
 bot = Bot(token=PUBLIC_BOT_TOKEN)
@@ -43,22 +42,16 @@ async def yookassa_webhook(request: Request):
         return {"status": "no_username"}
 
     try:
-        # control plane ONLY
-        result = activate_paid_plan(username, plan)
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-    try:
-        # SINGLE SOURCE OF OUTPUT
-        card = get_vpn_card(username)
+        # CONTROL PLANE RETURNS FINAL OUTPUT
+        card_text = await activate_paid_plan(username=username, plan=plan)
 
         await bot.send_message(
             chat_id=tg_id,
-            text=card,
+            text=card_text,
             disable_web_page_preview=True
         )
 
     except Exception as e:
-        print("Telegram error:", e)
+        return {"status": "error", "message": str(e)}
 
     return {"status": "ok"}
