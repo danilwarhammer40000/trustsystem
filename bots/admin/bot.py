@@ -6,7 +6,7 @@ from aiogram import Bot, Dispatcher
 from config.settings import ADMIN_BOT_TOKEN
 
 from bots.admin.middleware.access import AdminAccessMiddleware
-from bots.admin.handlers import start, stats, users, sync, manage
+from bots.admin.handlers import start, stats, users, manage
 
 from services.control_plane import sync_all_users
 
@@ -41,7 +41,6 @@ dp.callback_query.middleware(AdminAccessMiddleware())
 dp.include_router(start.router)
 dp.include_router(stats.router)
 dp.include_router(users.router)
-dp.include_router(sync.router)
 dp.include_router(manage.router)
 
 
@@ -50,18 +49,13 @@ dp.include_router(manage.router)
 # =========================
 
 async def scheduler_loop():
-    """
-    Безопасный фоновой sync:
-    - не падает
-    - использует control_plane (единая логика)
-    """
     while True:
         try:
             await asyncio.to_thread(sync_all_users)
         except Exception as e:
             logging.error(f"[SYNC ERROR] {e}")
 
-        await asyncio.sleep(300)  # каждые 5 минут
+        await asyncio.sleep(300)
 
 
 # =========================
@@ -70,3 +64,13 @@ async def scheduler_loop():
 
 async def main():
     logging.info("ADMIN BOT STARTED")
+
+    # запускаем фоновый sync
+    asyncio.create_task(scheduler_loop())
+
+    # запуск бота
+    await dp.start_polling(bot)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
