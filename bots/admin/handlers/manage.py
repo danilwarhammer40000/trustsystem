@@ -59,14 +59,13 @@ def status_emoji(date_str):
 
 
 # =========================
-# SAFE LINK CLEANER (FIX)
+# LINK CLEANER
 # =========================
 
 def clean_link(link: str) -> str:
     if not link:
         return ""
 
-    # убираем возможный мусор от старого generator.py
     link = link.strip()
 
     if "To connect on mobile" in link:
@@ -83,8 +82,11 @@ def build_user_card(user, link):
 
     link = clean_link(link)
 
-    # QR token
-    qr_token = link.replace("tt://?", "")
+    # универсальный QR token (FIX)
+    if "tt://" in link:
+        qr_token = link.replace("tt://?", "")
+    else:
+        qr_token = link
 
     return (
         f"👤 {user['username']}\n"
@@ -208,6 +210,9 @@ async def add_finish(call: CallbackQuery, state: FSMContext):
 
         user = extend_user(user["username"], days)
 
+        # FIX: синхронизация
+        await to_thread(safe_sync)
+
         link = clean_link(generate_link(user["username"], DOMAIN))
 
         await call.message.answer(
@@ -284,6 +289,9 @@ async def extend_apply(call: CallbackQuery):
     _, username, days = call.data.split(":")
     user = extend_user(username, int(days))
 
+    # FIX: синхронизация
+    await to_thread(safe_sync)
+
     expire = format_expire(user.get("expires_at"))
 
     await call.message.answer(f"✅ {username}\n⏳ {expire}")
@@ -313,6 +321,9 @@ async def manual_apply(msg: Message, state: FSMContext):
         dt = datetime.fromisoformat(msg.text.strip())
         set_expire(data["username"], dt)
 
+        # FIX: синхронизация
+        await to_thread(safe_sync)
+
         await msg.answer("✅ Updated")
 
     except:
@@ -322,7 +333,7 @@ async def manual_apply(msg: Message, state: FSMContext):
 
 
 # =========================
-# GET LINK (FIXED - NO DUPLICATES)
+# GET LINK
 # =========================
 
 @router.callback_query(F.data.startswith("link:"))
@@ -392,6 +403,9 @@ async def delete_menu(msg: Message):
 async def delete_cb(call: CallbackQuery):
     username = call.data.split(":")[1]
     delete_user(username)
+
+    # FIX: синхронизация
+    await to_thread(safe_sync)
 
     await call.message.answer("❌ Deleted")
     await call.answer()
