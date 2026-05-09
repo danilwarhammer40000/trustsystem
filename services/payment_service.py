@@ -12,7 +12,6 @@ Configuration.secret_key = YOOKASSA_API_KEY
 
 FILE = "storage/payments.json"
 
-# 🔒 защита от race condition при webhook
 lock = threading.Lock()
 
 
@@ -24,14 +23,18 @@ def load():
     try:
         with open(FILE, "r") as f:
             return json.load(f)
-    except:
+    except (FileNotFoundError, json.JSONDecodeError):
         return []
 
 
 def save(data):
     with lock:
-        with open(FILE, "w") as f:
-            json.dump(data, f, indent=2)
+        tmp_file = FILE + ".tmp"
+        with open(tmp_file, "w") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+
+        import os
+        os.replace(tmp_file, FILE)
 
 
 # =========================
@@ -46,11 +49,10 @@ def create_payment(plan: str, tg_id: int):
     }
 
     amount = prices.get(plan)
-    if not amount:
+    if amount is None:
         raise ValueError("INVALID_PLAN")
 
     username = f"user_{tg_id}"
-
     idempotence_key = str(uuid.uuid4())
 
     payment = Payment.create(
@@ -61,7 +63,7 @@ def create_payment(plan: str, tg_id: int):
             },
             "confirmation": {
                 "type": "redirect",
-                "return_url": f"https://t.me}"
+                "return_url": "https://t.me"
             },
             "capture": True,
             "description": "VPN access",
@@ -76,7 +78,7 @@ def create_payment(plan: str, tg_id: int):
 
     data = load()
 
-    # защита от дубля платежей
+    # защита от дублей
     data.append({
         "id": payment.id,
         "tg_id": tg_id,
@@ -106,7 +108,6 @@ def mark_paid(payment_id: str):
     for p in data:
         if p.get("id") == payment_id:
 
-            # idempotency protection
             if p.get("status") == "paid":
                 return p
 
@@ -130,7 +131,7 @@ def is_paid(payment_id: str) -> bool:
 
 
 # =========================
-# SAFE HELPERS (WEBHOOK USE)
+# SAFE HELPERS
 # =========================
 
 def get_payment(payment_id: str):
