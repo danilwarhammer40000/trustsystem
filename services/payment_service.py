@@ -1,15 +1,19 @@
 import uuid
 import json
+import threading
 from datetime import datetime
 
 from yookassa import Configuration, Payment
-from config.settings import YOOKASSA_SHOP_ID, YOOKASSA_API_KEY
+from config.settings import YOOKASSA_SHOP_ID, YOOKASSA_API_KEY, PUBLIC_BOT_USERNAME
 
 
 Configuration.account_id = YOOKASSA_SHOP_ID
 Configuration.secret_key = YOOKASSA_API_KEY
 
 FILE = "storage/payments.json"
+
+# 🔒 защита от race condition при webhook
+lock = threading.Lock()
 
 
 # =========================
@@ -25,8 +29,9 @@ def load():
 
 
 def save(data):
-    with open(FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    with lock:
+        with open(FILE, "w") as f:
+            json.dump(data, f, indent=2)
 
 
 # =========================
@@ -46,26 +51,32 @@ def create_payment(plan: str, tg_id: int):
 
     username = f"user_{tg_id}"
 
-    payment = Payment.create({
-        "amount": {
-            "value": str(amount),
-            "currency": "RUB"
+    idempotence_key = str(uuid.uuid4())
+
+    payment = Payment.create(
+        {
+            "amount": {
+                "value": f"{amount:.2f}",
+                "currency": "RUB"
+            },
+            "confirmation": {
+                "type": "redirect",
+                "return_url": f"https://t.me/{PUBLIC_BOT_USERNAME}"
+            },
+            "capture": True,
+            "description": "VPN access",
+            "metadata": {
+                "tg_id": str(tg_id),
+                "plan": plan,
+                "username": username
+            }
         },
-        "confirmation": {
-            "type": "redirect",
-            "return_url": "https://t.me/your_bot"
-        },
-        "capture": True,
-        "description": "VPN access",
-        "metadata": {
-            "tg_id": str(tg_id),
-            "plan": plan,
-            "username": username
-        }
-    }, uuid.uuid4())
+        idempotence_key
+    )
 
     data = load()
 
+    # защита от дубля платежей
     data.append({
         "id": payment.id,
         "tg_id": tg_id,
@@ -95,7 +106,7 @@ def mark_paid(payment_id: str):
     for p in data:
         if p.get("id") == payment_id:
 
-            # idempotency
+            # idempotency protection
             if p.get("status") == "paid":
                 return p
 
@@ -116,3 +127,17 @@ def is_paid(payment_id: str) -> bool:
             return p.get("status") == "paid"
 
     return False
+
+
+# =========================
+# SAFE HELPERS (WEBHOOK USE)
+# =========================
+
+def get_payment(payment_id: str):
+    data = load()
+
+    for p in data:
+        if p.get("id") == payment_id:
+            return p
+
+    return None
