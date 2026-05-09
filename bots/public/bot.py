@@ -11,9 +11,9 @@ from config.settings import PUBLIC_BOT_TOKEN
 from bots.public.handlers import (
     start,
     connect,
-    payments,
     profile,
-    cancel
+    cancel,
+    extend_menu
 )
 
 
@@ -28,7 +28,12 @@ logging.basicConfig(level=logging.INFO)
 # REDIS / FSM
 # =========================
 
-redis = Redis(host="localhost", port=6379, decode_responses=True)
+redis = Redis(
+    host="localhost",
+    port=6379,
+    decode_responses=True
+)
+
 storage = RedisStorage(redis)
 
 
@@ -41,12 +46,12 @@ dp = Dispatcher(storage=storage)
 
 
 # =========================
-# ROUTERS
+# ROUTERS (FIXED ORDER)
 # =========================
 
 dp.include_router(start.router)
 dp.include_router(connect.router)
-dp.include_router(payments.router)
+dp.include_router(extend_menu.router)
 dp.include_router(profile.router)
 dp.include_router(cancel.router)
 
@@ -60,6 +65,8 @@ async def main():
 
     try:
         await dp.start_polling(bot)
+    except Exception as e:
+        logging.exception(f"[BOT ERROR] {e}")
     finally:
         await bot.session.close()
         await redis.close()
