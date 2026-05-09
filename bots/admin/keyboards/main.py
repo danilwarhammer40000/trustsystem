@@ -12,7 +12,10 @@ main_menu = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
+
 cancel_kb = ReplyKeyboardMarkup(
-    keyboard=[[KeyboardButton(text="❌ Cancel")]],
+    keyboard=[
+        [KeyboardButton(text="❌ Cancel")]
+    ],
     resize_keyboard=True
 )
