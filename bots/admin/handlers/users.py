@@ -1,4 +1,5 @@
 from aiogram import Router, F, types
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from services.user_service import get_all_users, delete_user
 
@@ -6,7 +7,7 @@ router = Router()
 
 
 # =========================
-# LIST USERS
+# LIST USERS (FIXED UI)
 # =========================
 
 @router.message(F.text == "📋 List users")
@@ -18,12 +19,19 @@ async def list_users(message: types.Message):
         await message.answer("No users")
         return
 
-    text = "\n".join(
-        f"{u['username']} | {u.get('status')} | {u.get('expires_at')}"
-        for u in users
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=f"{u.get('username')} | {u.get('status')} | {u.get('expires_at')}",
+                    callback_data=f"user:{u.get('username')}"
+                )
+            ]
+            for u in users if u.get("username")
+        ]
     )
 
-    await message.answer(text)
+    await message.answer("📋 Users:", reply_markup=kb)
 
 
 # =========================
@@ -39,12 +47,15 @@ async def delete_menu(message: types.Message):
         await message.answer("No users")
         return
 
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=u["username"], callback_data=f"del:{u['username']}")]
-            for u in users
+            [
+                InlineKeyboardButton(
+                    text=u.get("username"),
+                    callback_data=f"del:{u.get('username')}"
+                )
+            ]
+            for u in users if u.get("username")
         ]
     )
 
@@ -52,15 +63,19 @@ async def delete_menu(message: types.Message):
 
 
 # =========================
-# DELETE ACTION
+# DELETE ACTION (FIXED)
 # =========================
 
 @router.callback_query(F.data.startswith("del:"))
-async def delete_cb(call):
+async def delete_cb(call: types.CallbackQuery):
 
     username = call.data.split(":")[1]
 
-    delete_user(username)
+    if not username:
+        await call.answer("Invalid user", show_alert=True)
+        return
+
+    result = delete_user(username)
 
     await call.message.answer(f"❌ Deleted: {username}")
     await call.answer()
