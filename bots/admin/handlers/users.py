@@ -1,15 +1,18 @@
-from aiogram import Router, types
-from aiogram.filters import Command
+from aiogram import Router, F, types
 
 from services.user_service import get_all_users, delete_user
 
 router = Router()
 
 
-@router.message(Command("users"))
+# =========================
+# LIST USERS
+# =========================
+
+@router.message(F.text == "📋 List users")
 async def list_users(message: types.Message):
 
-    users = get_all_users()
+    users = get_all_users() or []
 
     if not users:
         await message.answer("No users")
@@ -23,17 +26,41 @@ async def list_users(message: types.Message):
     await message.answer(text)
 
 
-@router.message(Command("delete"))
-async def delete(message: types.Message):
+# =========================
+# DELETE MENU
+# =========================
 
-    args = message.text.split()
+@router.message(F.text == "❌ Delete user")
+async def delete_menu(message: types.Message):
 
-    if len(args) < 2:
-        await message.answer("Usage: /delete username")
+    users = get_all_users() or []
+
+    if not users:
+        await message.answer("No users")
         return
 
-    username = args[1]
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=u["username"], callback_data=f"del:{u['username']}")]
+            for u in users
+        ]
+    )
+
+    await message.answer("Select user to delete:", reply_markup=kb)
+
+
+# =========================
+# DELETE ACTION
+# =========================
+
+@router.callback_query(F.data.startswith("del:"))
+async def delete_cb(call):
+
+    username = call.data.split(":")[1]
 
     delete_user(username)
 
-    await message.answer(f"Deleted: {username}")
+    await call.message.answer(f"❌ Deleted: {username}")
+    await call.answer()
