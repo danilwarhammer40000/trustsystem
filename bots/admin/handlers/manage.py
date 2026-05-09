@@ -1,4 +1,4 @@
-from asyncio import to_thread
+import asyncio
 from datetime import datetime
 
 from aiogram import Router, F
@@ -16,8 +16,9 @@ from services.user_service import (
     set_expire
 )
 
+from services.control_plane import sync_all_users
+
 from core.generator import generate_link
-from core.sync import safe_sync
 from config.settings import DOMAIN
 
 
@@ -79,10 +80,8 @@ def clean_link(link: str) -> str:
 
 def build_user_card(user, link):
     expire = format_expire(user.get("expires_at"))
-
     link = clean_link(link)
 
-    # универсальный QR token (FIX)
     if "tt://" in link:
         qr_token = link.replace("tt://?", "")
     else:
@@ -93,7 +92,7 @@ def build_user_card(user, link):
         f"🔑 {user['password']}\n"
         f"⏳ {expire}\n\n"
         f"🔗 {link}\n\n"
-        f"To connect on mobile, you can scan QR code on the page:\n"
+        f"To connect on mobile, scan QR:\n"
         f"https://trusttunnel.org/qr.html#tt={qr_token}"
     )
 
@@ -137,9 +136,7 @@ async def add_username(msg: Message, state: FSMContext):
                 InlineKeyboardButton(text="✍️ Manual", callback_data="pass:manual"),
                 InlineKeyboardButton(text="⚙️ Auto", callback_data="pass:auto"),
             ],
-            [
-                InlineKeyboardButton(text="❌ Cancel", callback_data="cancel")
-            ]
+            [InlineKeyboardButton(text="❌ Cancel", callback_data="cancel")]
         ]
     )
 
@@ -147,7 +144,7 @@ async def add_username(msg: Message, state: FSMContext):
 
 
 # =========================
-# PASSWORD SELECT
+# PASSWORD
 # =========================
 
 @router.callback_query(F.data.startswith("pass:"))
@@ -181,12 +178,8 @@ async def show_days(target):
                 InlineKeyboardButton(text="3 days", callback_data="days:3"),
                 InlineKeyboardButton(text="30 days", callback_data="days:30"),
             ],
-            [
-                InlineKeyboardButton(text="∞", callback_data="days:0"),
-            ],
-            [
-                InlineKeyboardButton(text="❌ Cancel", callback_data="cancel")
-            ]
+            [InlineKeyboardButton(text="∞", callback_data="days:0")],
+            [InlineKeyboardButton(text="❌ Cancel", callback_data="cancel")]
         ]
     )
 
@@ -194,7 +187,7 @@ async def show_days(target):
 
 
 # =========================
-# CREATE USER FINAL
+# CREATE USER
 # =========================
 
 @router.callback_query(F.data.startswith("days:"))
@@ -210,8 +203,8 @@ async def add_finish(call: CallbackQuery, state: FSMContext):
 
         user = extend_user(user["username"], days)
 
-        # FIX: синхронизация
-        await to_thread(safe_sync)
+        # ✅ НОВАЯ ЛОГИКА
+        await asyncio.to_thread(sync_all_users)
 
         link = clean_link(generate_link(user["username"], DOMAIN))
 
@@ -264,15 +257,9 @@ async def user_menu(call: CallbackQuery):
                 InlineKeyboardButton(text="3 days", callback_data=f"ext:{username}:3"),
                 InlineKeyboardButton(text="30 days", callback_data=f"ext:{username}:30"),
             ],
-            [
-                InlineKeyboardButton(text="∞", callback_data=f"ext:{username}:0"),
-            ],
-            [
-                InlineKeyboardButton(text="Manual", callback_data=f"manual:{username}")
-            ],
-            [
-                InlineKeyboardButton(text="🔗 Get link", callback_data=f"link:{username}")
-            ]
+            [InlineKeyboardButton(text="∞", callback_data=f"ext:{username}:0")],
+            [InlineKeyboardButton(text="Manual", callback_data=f"manual:{username}")],
+            [InlineKeyboardButton(text="🔗 Get link", callback_data=f"link:{username}")]
         ]
     )
 
@@ -289,8 +276,7 @@ async def extend_apply(call: CallbackQuery):
     _, username, days = call.data.split(":")
     user = extend_user(username, int(days))
 
-    # FIX: синхронизация
-    await to_thread(safe_sync)
+    await asyncio.to_thread(sync_all_users)
 
     expire = format_expire(user.get("expires_at"))
 
@@ -321,8 +307,7 @@ async def manual_apply(msg: Message, state: FSMContext):
         dt = datetime.fromisoformat(msg.text.strip())
         set_expire(data["username"], dt)
 
-        # FIX: синхронизация
-        await to_thread(safe_sync)
+        await asyncio.to_thread(sync_all_users)
 
         await msg.answer("✅ Updated")
 
@@ -358,54 +343,17 @@ async def get_link(call: CallbackQuery):
     await call.answer()
 
 
-@router.message(F.text == "🔗 Get link")
-async def get_link_menu(msg: Message):
-    users = get_all_users() or []
-
-    if not users:
-        await msg.answer("No users")
-        return
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=u["username"],
-                    callback_data=f"link:{u['username']}"
-                )
-            ]
-            for u in users
-        ]
-    )
-
-    await msg.answer("Select user:", reply_markup=kb)
-
-
 # =========================
 # DELETE
 # =========================
 
-@router.message(F.text == "❌ Delete user")
-async def delete_menu(msg: Message):
-    users = get_all_users() or []
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text=u["username"], callback_data=f"del:{u['username']}")]
-            for u in users
-        ]
-    )
-
-    await msg.answer("Select:", reply_markup=kb)
-
-
 @router.callback_query(F.data.startswith("del:"))
 async def delete_cb(call: CallbackQuery):
     username = call.data.split(":")[1]
+
     delete_user(username)
 
-    # FIX: синхронизация
-    await to_thread(safe_sync)
+    await asyncio.to_thread(sync_all_users)
 
     await call.message.answer("❌ Deleted")
     await call.answer()
@@ -418,5 +366,5 @@ async def delete_cb(call: CallbackQuery):
 @router.message(F.text == "🔄 Sync users")
 async def sync_btn(msg: Message):
     await msg.answer("Sync...")
-    await to_thread(safe_sync)
+    await asyncio.to_thread(sync_all_users)
     await msg.answer("✅ Done")
