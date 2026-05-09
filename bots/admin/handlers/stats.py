@@ -1,12 +1,11 @@
-from aiogram import Router, types
-from aiogram.filters import Command
+from aiogram import Router, F, types
 
 from services.user_service import get_all_users
 
 router = Router()
 
 
-@router.message(Command("stats"))
+@router.message(F.text == "📊 Stats")
 async def stats(message: types.Message):
 
     users = get_all_users() or []
