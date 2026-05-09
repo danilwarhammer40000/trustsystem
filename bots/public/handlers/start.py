@@ -4,10 +4,8 @@ from aiogram.filters import Command
 router = Router()
 
 
-@router.message(Command("start"))
-async def start_cmd(message: types.Message):
-
-    kb = types.ReplyKeyboardMarkup(
+def get_menu():
+    return types.ReplyKeyboardMarkup(
         keyboard=[
             [types.KeyboardButton(text="🚀 Подключиться")],
             [types.KeyboardButton(text="🔄 Продлить")],
@@ -16,14 +14,13 @@ async def start_cmd(message: types.Message):
         resize_keyboard=True
     )
 
-    await message.answer(
-        "🔐 VPN сервис\n\n"
-        "Быстрое подключение\n"
-        "Стабильная скорость\n"
-        "Без логов\n\n"
-        "💳 Тарифы:\n"
-        "30 дней — 199 RUB\n"
-        "60 дней — 349 RUB\n\n"
-        "Выберите действие:",
-        reply_markup=kb
-    )
+
+@router.message(Command("start"))
+async def start_cmd(message: types.Message):
+    await message.answer("Выберите действие:", reply_markup=get_menu())
+
+
+# FIX: кнопка "назад" вызывает start
+@router.message(lambda m: m.text == "/start")
+async def start_text(message: types.Message):
+    await start_cmd(message)
