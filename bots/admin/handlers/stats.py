@@ -9,13 +9,13 @@ router = Router()
 @router.message(Command("stats"))
 async def stats(message: types.Message):
 
-    users = get_all_users()
+    users = get_all_users() or []
 
-    active = len([u for u in users if u.get("status") == "active"])
-    inactive = len([u for u in users if u.get("status") != "active"])
+    active = sum(1 for u in users if u.get("status") == "active")
+    inactive = sum(1 for u in users if u.get("status") != "active")
 
     await message.answer(
-        f"📊 Stats:\n"
+        "📊 Stats:\n"
         f"Active: {active}\n"
         f"Inactive: {inactive}\n"
         f"Total: {len(users)}"
