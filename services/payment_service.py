@@ -4,7 +4,7 @@ import threading
 from datetime import datetime
 
 from yookassa import Configuration, Payment
-from config.settings import YOOKASSA_SHOP_ID, YOOKASSA_API_KEY, PUBLIC_BOT_USERNAME
+from config.settings import YOOKASSA_SHOP_ID, YOOKASSA_API_KEY
 
 
 Configuration.account_id = YOOKASSA_SHOP_ID
@@ -61,7 +61,7 @@ def create_payment(plan: str, tg_id: int):
             },
             "confirmation": {
                 "type": "redirect",
-                "return_url": f"https://t.me/{PUBLIC_BOT_USERNAME}"
+                "return_url": f"https://t.me}"
             },
             "capture": True,
             "description": "VPN access",
