@@ -1,12 +1,13 @@
 import os
+import logging
 from datetime import datetime
 from filelock import FileLock
 
 from core.db import load_users, save_users
 from core.credentials import rebuild_credentials_from_db
 
-LOCK_PATH = "/opt/trustsystem/storage/sync.lock"
 
+LOCK_PATH = "/opt/trustsystem/storage/sync.lock"
 os.makedirs(os.path.dirname(LOCK_PATH), exist_ok=True)
 
 lock = FileLock(LOCK_PATH, timeout=20)
@@ -28,23 +29,31 @@ def full_sync():
                 continue
 
             try:
-                if datetime.fromisoformat(exp) < now:
+                exp_dt = datetime.fromisoformat(exp)
+
+                if exp_dt < now:
                     u["status"] = "inactive"
                     changed = True
-            except:
-                continue
+
+            except Exception as e:
+                logging.error(f"[SYNC] date parse error: {e}")
 
         if changed:
             save_users(users)
+            logging.info("[SYNC] users updated")
 
         rebuild_credentials_from_db(users)
+        logging.info("[SYNC] credentials rebuilt")
 
 
 def restart_trusttunnel():
     import subprocess
 
-    subprocess.Popen(
-        ["systemctl", "restart", "trusttunnel.service"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
-    )
+    try:
+        subprocess.Popen(
+            ["systemctl", "restart", "trusttunnel.service"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+    except Exception as e:
+        logging.error(f"[SYNC] restart error: {e}")
