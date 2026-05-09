@@ -368,3 +368,29 @@ async def sync_btn(msg: Message):
     await msg.answer("Sync...")
     await asyncio.to_thread(sync_all_users)
     await msg.answer("✅ Done")
+
+# =========================
+# GET LINK (MENU BUTTON)
+# =========================
+
+@router.message(F.text == "🔗 Get link")
+async def get_link_menu(msg: Message):
+    users = get_all_users() or []
+
+    if not users:
+        await msg.answer("No users")
+        return
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=u["username"],
+                    callback_data=f"link:{u['username']}"
+                )
+            ]
+            for u in users
+        ]
+    )
+
+    await msg.answer("Select user:", reply_markup=kb)
