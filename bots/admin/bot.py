@@ -50,15 +50,17 @@ dp.include_router(manage.router)
 
 
 # =========================
-# SAFE SYNC LOOP
+# SAFE SYNC LOOP (FIXED)
 # =========================
 
 async def scheduler_loop():
     while True:
         try:
+            logging.info("[SYNC] start")
             await asyncio.to_thread(sync_all_users)
+            logging.info("[SYNC] done")
         except Exception as e:
-            logging.error(f"[SYNC ERROR] {e}")
+            logging.exception(f"[SYNC ERROR] {e}")
 
         await asyncio.sleep(300)
 
@@ -70,9 +72,13 @@ async def scheduler_loop():
 async def main():
     logging.info("ADMIN BOT STARTED")
 
+    # запуск фоновой задачи
     asyncio.create_task(scheduler_loop())
 
-    await dp.start_polling(bot)
+    try:
+        await dp.start_polling(bot)
+    finally:
+        await bot.session.close()
 
 
 if __name__ == "__main__":
