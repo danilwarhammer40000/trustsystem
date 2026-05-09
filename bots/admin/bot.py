@@ -6,7 +6,12 @@ from aiogram import Bot, Dispatcher
 from config.settings import ADMIN_BOT_TOKEN
 
 from bots.admin.middleware.access import AdminAccessMiddleware
-from bots.admin.handlers import start, stats, users, manage
+from bots.admin.handlers import (
+    start,
+    stats,
+    users,
+    manage
+)
 
 from services.control_plane import sync_all_users
 
@@ -45,7 +50,7 @@ dp.include_router(manage.router)
 
 
 # =========================
-# SAFE SCHEDULER
+# SAFE SYNC LOOP
 # =========================
 
 async def scheduler_loop():
@@ -65,10 +70,8 @@ async def scheduler_loop():
 async def main():
     logging.info("ADMIN BOT STARTED")
 
-    # запускаем фоновый sync
     asyncio.create_task(scheduler_loop())
 
-    # запуск бота
     await dp.start_polling(bot)
 
 
