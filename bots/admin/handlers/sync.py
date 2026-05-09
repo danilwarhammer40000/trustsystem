@@ -1,16 +1,9 @@
-from aiogram import Router, types
-from aiogram.filters import Command
-
-from core.sync import full_sync
-
-router = Router()
+from services.control_plane import sync_all_users
 
 
-@router.message(Command("sync"))
-async def sync_cmd(message: types.Message):
-
-    try:
-        full_sync()
-        await message.answer("✅ Sync completed")
-    except Exception as e:
-        await message.answer(f"❌ Sync error: {str(e)}")
+def safe_sync():
+    """
+    Wrapper для admin bot.
+    Вся логика синхронизации находится в control_plane.
+    """
+    return sync_all_users()
