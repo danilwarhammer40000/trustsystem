@@ -4,7 +4,9 @@ from aiogram import Bot
 from config.settings import PUBLIC_BOT_TOKEN
 from services.control_plane import activate_paid_plan
 
-router = APIRouter()
+# ✅ ВАЖНО: добавили prefix
+router = APIRouter(prefix="/api/payment_webhook")
+
 bot = Bot(token=PUBLIC_BOT_TOKEN)
 
 
@@ -12,6 +14,7 @@ bot = Bot(token=PUBLIC_BOT_TOKEN)
 async def youkassa_webhook(request: Request):
     try:
         data = await request.json()
+        print("YOOKASSA WEBHOOK:", data)  # 🔥 лог для проверки
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON")
 
@@ -37,7 +40,7 @@ async def youkassa_webhook(request: Request):
         card_text = await activate_paid_plan(
             username=username,
             plan=plan,
-            payment_id=payment_id  # КРИТИЧНО
+            payment_id=payment_id
         )
 
         # ОТПРАВКА ПОЛЬЗОВАТЕЛЮ
