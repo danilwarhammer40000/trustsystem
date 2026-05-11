@@ -6,12 +6,10 @@ from datetime import datetime
 from yookassa import Configuration, Payment
 from config.settings import YOOKASSA_SHOP_ID, YOOKASSA_API_KEY
 
-
 Configuration.account_id = YOOKASSA_SHOP_ID
 Configuration.secret_key = YOOKASSA_API_KEY
 
 FILE = "storage/payments.json"
-
 lock = threading.Lock()
 
 
@@ -42,7 +40,6 @@ def save(data):
 # =========================
 
 def create_payment(plan: str, tg_id: int):
-
     prices = {
         "30": 10,
         "60": 20
@@ -63,12 +60,12 @@ def create_payment(plan: str, tg_id: int):
             },
             "confirmation": {
                 "type": "redirect",
-                "return_url": "https://t.me"
+                "return_url": "https://t.me/vpn_trusttunnel_bot?start=return"
             },
             "capture": True,
             "description": "VPN access",
             "metadata": {
-                "tg_id": str(tg_id),
+                "user_id": str(tg_id),   # ❗ КРИТИЧНО: единый ключ для webhook
                 "plan": plan,
                 "username": username
             }
@@ -81,7 +78,7 @@ def create_payment(plan: str, tg_id: int):
     # защита от дублей
     data.append({
         "id": payment.id,
-        "tg_id": tg_id,
+        "user_id": str(tg_id),
         "username": username,
         "plan": plan,
         "status": "pending",
