@@ -60,7 +60,7 @@ def create_payment(plan: str, tg_id: int):
             },
             "confirmation": {
                 "type": "redirect",
-                "return_url": "https://t.me/vpn_trusttunnel_bot?start=return"
+                "return_url": "https://t.me/vpn_trusttunnel_bot"
             },
             "capture": True,
             "description": "VPN access",
