@@ -9,15 +9,18 @@ sys.path.append(str(BASE_DIR))
 app = FastAPI(title="TrustSystem Webhook")
 
 from core.webhook.yookassa import router as yookassa_router
-
 app.include_router(yookassa_router)
 
 
-if __name__ == "__main__":
+def main():
     uvicorn.run(
-        "run_webhook:app",
+        app,
         host="0.0.0.0",
         port=8000,
         reload=False,
         log_level="info"
     )
+
+
+if __name__ == "__main__":
+    main()
