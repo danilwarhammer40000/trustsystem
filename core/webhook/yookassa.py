@@ -1,30 +1,29 @@
 from fastapi import APIRouter, Request, HTTPException
 from aiogram import Bot
-
 from config.settings import PUBLIC_BOT_TOKEN
 from services.control_plane import activate_paid_plan
 
-router = APIRouter(prefix="/api/payment_webhook")
+router = APIRouter()  # ❗ без prefix
+
 bot = Bot(token=PUBLIC_BOT_TOKEN)
 
 
-@router.post("/yookassa")
+@router.post("/payment_webhook/yookassa")
 async def yookassa_webhook(request: Request):
-
     data = await request.json()
     print("YOOKASSA WEBHOOK:", data)
 
     event = data.get("event")
     obj = data.get("object", {})
 
-    # только успешные платежи
-    if event not in ("payment.succeeded",):
+    # принимаем только успешные платежи
+    if event != "payment.succeeded":
         return {"ok": True}
 
     payment_id = obj.get("id")
     metadata = obj.get("metadata", {})
 
-    user_id = metadata.get("user_id")   # ❗ ВАЖНО: не username
+    user_id = metadata.get("user_id")
     plan = metadata.get("plan")
 
     if not user_id or not plan:
