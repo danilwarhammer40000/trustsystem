@@ -6,9 +6,13 @@ import re
 from core.db import load_users, save_users
 
 
+# =========================
+# INTERNAL HELPERS
+# =========================
+
 def _generate_password(length: int = 12):
     alphabet = string.ascii_letters + string.digits
-    return "".join(secrets.choice(alphabet) for _ in alphabet[:length])
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 def _validate_username(username: str):
@@ -16,22 +20,43 @@ def _validate_username(username: str):
         raise ValueError("INVALID_USERNAME")
 
 
+def _save(users):
+    save_users(users)
+
+
+# =========================
+# READ
+# =========================
+
 def get_all_users():
     return load_users()
 
 
 def get_user(username: str):
     users = load_users()
-    return next((u for u in users if u.get("username") == username), None)
+    for u in users:
+        if u.get("username") == username:
+            return u
+    return None
 
+
+# =========================
+# CREATE
+# =========================
 
 def create_user(username: str, password: str | None = None, tg_id: int | None = None):
     _validate_username(username)
 
     users = load_users()
 
-    if any(u.get("username") == username for u in users):
-        raise ValueError("USERNAME_TAKEN")
+    for u in users:
+        if u.get("username") == username:
+            raise ValueError("USERNAME_TAKEN")
+
+    if tg_id is not None:
+        for u in users:
+            if u.get("telegram_id") == tg_id:
+                return u
 
     password = password if password and password != "-" else _generate_password()
 
@@ -47,13 +72,13 @@ def create_user(username: str, password: str | None = None, tg_id: int | None = 
     }
 
     users.append(user)
-    save_users(users)
+    _save(users)
 
     return user
 
 
 # =========================
-# CORE FIXED EXTENSION LOGIC
+# CORE TIME LOGIC
 # =========================
 
 def extend_user(username: str, days: int):
@@ -67,7 +92,7 @@ def extend_user(username: str, days: int):
             if days == 0:
                 u["status"] = "active"
                 u["expires_at"] = "2099-12-31T23:59:59"
-                save_users(users)
+                _save(users)
                 return u
 
             base = now
@@ -80,14 +105,65 @@ def extend_user(username: str, days: int):
                 except:
                     pass
 
-            u["expires_at"] = (base + timedelta(days=days)).isoformat()
-            u["status"] = "active"
+            new_expiry = base + timedelta(days=days)
 
-            save_users(users)
+            u["status"] = "active"
+            u["expires_at"] = new_expiry.isoformat()
+
+            _save(users)
             return u
 
     raise ValueError("USER_NOT_FOUND")
 
+
+def set_expire(username: str, dt: datetime):
+    users = load_users()
+
+    for u in users:
+        if u.get("username") == username:
+
+            u["expires_at"] = dt.isoformat()
+            u["status"] = "active" if dt > datetime.utcnow() else "inactive"
+
+            _save(users)
+            return u
+
+    raise ValueError("USER_NOT_FOUND")
+
+
+def delete_user(username: str):
+    users = load_users()
+    users = [u for u in users if u.get("username") != username]
+    _save(users)
+
+
+# =========================
+# TRIAL
+# =========================
+
+def activate_trial(username: str):
+    users = load_users()
+
+    for u in users:
+        if u.get("username") == username:
+
+            if u.get("trial_used"):
+                raise ValueError("TRIAL_ALREADY_USED")
+
+            u["trial_used"] = True
+            u["plan"] = "trial"
+            u["status"] = "active"
+            u["expires_at"] = (datetime.utcnow() + timedelta(days=3)).isoformat()
+
+            _save(users)
+            return u
+
+    raise ValueError("USER_NOT_FOUND")
+
+
+# =========================
+# PAID PLAN
+# =========================
 
 def activate_paid(username: str, days: int):
     users = load_users()
@@ -97,7 +173,6 @@ def activate_paid(username: str, days: int):
 
             u["plan"] = f"{days}_days"
 
-            # SINGLE SOURCE OF TRUTH
             return extend_user(username, days)
 
     raise ValueError("USER_NOT_FOUND")
