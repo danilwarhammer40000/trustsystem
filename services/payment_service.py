@@ -41,7 +41,7 @@ def save(data):
 
 def create_payment(plan: str, tg_id: int):
     prices = {
-        "30": 10,
+        "30": 1,
         "60": 20
     }
 
