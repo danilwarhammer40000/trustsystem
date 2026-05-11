@@ -18,7 +18,6 @@ async def yookassa_webhook(request: Request):
         event = data.get("event")
         obj = data.get("object", {})
 
-        # принимаем только успешную оплату
         if event != "payment.succeeded":
             return {"ok": True}
 
@@ -31,18 +30,15 @@ async def yookassa_webhook(request: Request):
         if not user_id or not plan:
             raise HTTPException(status_code=400, detail="Missing metadata")
 
-        # 🔥 ВАЖНО: приведение к строке (у тебя username = tg_id)
         user_id = str(user_id)
         plan = str(plan)
 
-        # 🔥 ВАЖНО: правильные аргументы
         card_text = await activate_paid_plan(
             username=user_id,
             plan=plan,
             payment_id=payment_id
         )
 
-        # отправка сообщения пользователю
         await bot.send_message(
             chat_id=int(user_id),
             text=card_text,
