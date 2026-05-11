@@ -8,7 +8,6 @@ sys.path.append(str(BASE_DIR))
 
 app = FastAPI(title="TrustSystem Webhook")
 
-# ❗ правильный импорт
 from core.webhook.yookassa import router as yookassa_router
 
 app.include_router(yookassa_router)
