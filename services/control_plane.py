@@ -53,3 +53,15 @@ async def activate_paid_plan(
         mark_paid(payment_id)
 
     return card["text"]
+
+
+from core.sync import full_sync, restart_trusttunnel
+
+
+def sync_all_users():
+    """
+    COMPAT LAYER: используется bots/*
+    """
+    full_sync()
+    restart_trusttunnel()
+    return "OK"
