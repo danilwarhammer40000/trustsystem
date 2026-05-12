@@ -24,6 +24,19 @@ def save_users(users: List[Dict]) -> None:
 
 
 # =========================
+# HELPERS
+# =========================
+
+def safe_parse_date(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except Exception:
+        return None
+
+
+# =========================
 # FINDERS
 # =========================
 
@@ -42,7 +55,7 @@ def get_all_users() -> List[Dict]:
 
 
 # =========================
-# CREATE
+# CREATE (NEW LOGIC)
 # =========================
 
 def create_user_if_not_exists(telegram_id: int) -> Dict:
@@ -52,11 +65,48 @@ def create_user_if_not_exists(telegram_id: int) -> Dict:
     if existing:
         return existing
 
+    # 🔥 если есть старый user без tg — привязываем
+    for u in users:
+        if u.get("username") == f"user_{telegram_id}":
+            u["telegram_id"] = int(telegram_id)
+            save_users(users)
+            return u
+
     now = datetime.utcnow()
 
     user = {
         "telegram_id": int(telegram_id),
         "username": f"user_{telegram_id}",
+        "password": generate_password(),
+        "plan": "trial",
+        "status": "active",
+        "trial_used": False,
+        "created_at": now.isoformat(),
+        "expires_at": None,
+    }
+
+    users.append(user)
+    save_users(users)
+
+    return user
+
+
+# =========================
+# CREATE (LEGACY SUPPORT)
+# =========================
+
+def create_user(username: str) -> Dict:
+    users = load_users()
+
+    existing = get_user_by_username(username)
+    if existing:
+        return existing
+
+    now = datetime.utcnow()
+
+    user = {
+        "telegram_id": None,  # legacy
+        "username": username,
         "password": generate_password(),
         "plan": "trial",
         "status": "active",
@@ -96,7 +146,7 @@ def activate_trial(telegram_id: int, days: int = 3) -> Dict:
 
 
 # =========================
-# EXTEND (MAIN LOGIC)
+# EXTEND (MAIN)
 # =========================
 
 def extend_user_by_tg(telegram_id: int, days: int) -> Dict:
@@ -107,15 +157,10 @@ def extend_user_by_tg(telegram_id: int, days: int) -> Dict:
 
             now = datetime.utcnow()
 
-            current_expiry = u.get("expires_at")
+            current_expiry_dt = safe_parse_date(u.get("expires_at"))
 
-            if current_expiry:
-                current_expiry_dt = datetime.fromisoformat(current_expiry)
-
-                if current_expiry_dt > now:
-                    new_expiry = current_expiry_dt + timedelta(days=days)
-                else:
-                    new_expiry = now + timedelta(days=days)
+            if current_expiry_dt and current_expiry_dt > now:
+                new_expiry = current_expiry_dt + timedelta(days=days)
             else:
                 new_expiry = now + timedelta(days=days)
 
@@ -130,7 +175,7 @@ def extend_user_by_tg(telegram_id: int, days: int) -> Dict:
 
 
 # =========================
-# LEGACY EXTEND (BACKWARD COMPAT)
+# EXTEND (LEGACY)
 # =========================
 
 def extend_user(username: str, days: int) -> Dict:
@@ -138,7 +183,33 @@ def extend_user(username: str, days: int) -> Dict:
     if not user:
         raise ValueError("User not found")
 
-    return extend_user_by_tg(user["telegram_id"], days)
+    tg_id = user.get("telegram_id")
+
+    if tg_id:
+        return extend_user_by_tg(tg_id, days)
+
+    # fallback для старых пользователей
+    now = datetime.utcnow()
+
+    current_expiry_dt = safe_parse_date(user.get("expires_at"))
+
+    if current_expiry_dt and current_expiry_dt > now:
+        new_expiry = current_expiry_dt + timedelta(days=days)
+    else:
+        new_expiry = now + timedelta(days=days)
+
+    user["expires_at"] = new_expiry.isoformat()
+    user["plan"] = f"{days}d"
+    user["status"] = "active"
+
+    users = load_users()
+    for i, u in enumerate(users):
+        if u.get("username") == username:
+            users[i] = user
+            break
+
+    save_users(users)
+    return user
 
 
 # =========================
