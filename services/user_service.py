@@ -118,3 +118,51 @@ def activate_trial_by_tg(tg_id: str | int):
             return u
 
     raise ValueError("USER_NOT_FOUND")
+
+# =========================
+# NEW SAFE METHODS (НЕ ЛОМАЮТ СТАРОЕ)
+# =========================
+
+def get_user_by_tg(tg_id: int):
+    users = load_users()
+
+    for u in users:
+        if u.get("telegram_id") == int(tg_id):
+            return u
+
+    return None
+
+
+def create_user_if_not_exists(tg_id: str):
+    tg_id = int(tg_id)
+
+    user = get_user_by_tg(tg_id)
+    if user:
+        return user
+
+    username = f"user_{tg_id}"
+
+    return create_user(
+        username=username,
+        tg_id=tg_id
+    )
+
+
+def extend_user_by_tg(tg_id: str, days: int):
+    tg_id = int(tg_id)
+
+    user = get_user_by_tg(tg_id)
+    if not user:
+        raise ValueError("USER_NOT_FOUND")
+
+    username = user.get("username")
+
+    return extend_user(username, days)
+
+
+# =========================
+# BACKWARD COMPAT (ВАЖНО)
+# =========================
+
+def get_all_users():
+    return load_users()
