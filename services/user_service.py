@@ -36,6 +36,13 @@ def safe_parse_date(value: Optional[str]) -> Optional[datetime]:
         return None
 
 
+def generate_password(length: int = 12) -> str:
+    import random
+    import string
+    chars = string.ascii_letters + string.digits
+    return ''.join(random.choice(chars) for _ in range(length))
+
+
 # =========================
 # FINDERS
 # =========================
@@ -55,7 +62,7 @@ def get_all_users() -> List[Dict]:
 
 
 # =========================
-# CREATE (NEW LOGIC)
+# CREATE (NEW)
 # =========================
 
 def create_user_if_not_exists(telegram_id: int) -> Dict:
@@ -65,7 +72,7 @@ def create_user_if_not_exists(telegram_id: int) -> Dict:
     if existing:
         return existing
 
-    # 🔥 если есть старый user без tg — привязываем
+    # попытка "привязать" старого пользователя
     for u in users:
         if u.get("username") == f"user_{telegram_id}":
             u["telegram_id"] = int(telegram_id)
@@ -87,12 +94,11 @@ def create_user_if_not_exists(telegram_id: int) -> Dict:
 
     users.append(user)
     save_users(users)
-
     return user
 
 
 # =========================
-# CREATE (LEGACY SUPPORT)
+# CREATE (LEGACY)
 # =========================
 
 def create_user(username: str) -> Dict:
@@ -105,7 +111,7 @@ def create_user(username: str) -> Dict:
     now = datetime.utcnow()
 
     user = {
-        "telegram_id": None,  # legacy
+        "telegram_id": None,
         "username": username,
         "password": generate_password(),
         "plan": "trial",
@@ -117,7 +123,6 @@ def create_user(username: str) -> Dict:
 
     users.append(user)
     save_users(users)
-
     return user
 
 
@@ -126,52 +131,53 @@ def create_user(username: str) -> Dict:
 # =========================
 
 def activate_trial(telegram_id: int, days: int = 3) -> Dict:
+    user = create_user_if_not_exists(telegram_id)
+
+    if user.get("trial_used"):
+        return user
+
+    now = datetime.utcnow()
+    user["trial_used"] = True
+    user["plan"] = "trial"
+    user["expires_at"] = (now + timedelta(days=days)).isoformat()
+
     users = load_users()
+    for i, u in enumerate(users):
+        if u.get("username") == user["username"]:
+            users[i] = user
+            break
 
-    for u in users:
-        if u.get("telegram_id") == int(telegram_id):
-
-            if u.get("trial_used"):
-                return u
-
-            now = datetime.utcnow()
-            u["plan"] = "trial"
-            u["trial_used"] = True
-            u["expires_at"] = (now + timedelta(days=days)).isoformat()
-
-            save_users(users)
-            return u
-
-    raise ValueError("User not found")
+    save_users(users)
+    return user
 
 
 # =========================
-# EXTEND (MAIN)
+# EXTEND (NEW)
 # =========================
 
 def extend_user_by_tg(telegram_id: int, days: int) -> Dict:
+    user = create_user_if_not_exists(telegram_id)
+
+    now = datetime.utcnow()
+    current_expiry = safe_parse_date(user.get("expires_at"))
+
+    if current_expiry and current_expiry > now:
+        new_expiry = current_expiry + timedelta(days=days)
+    else:
+        new_expiry = now + timedelta(days=days)
+
+    user["expires_at"] = new_expiry.isoformat()
+    user["plan"] = f"{days}d"
+    user["status"] = "active"
+
     users = load_users()
+    for i, u in enumerate(users):
+        if u.get("username") == user["username"]:
+            users[i] = user
+            break
 
-    for u in users:
-        if u.get("telegram_id") == int(telegram_id):
-
-            now = datetime.utcnow()
-
-            current_expiry_dt = safe_parse_date(u.get("expires_at"))
-
-            if current_expiry_dt and current_expiry_dt > now:
-                new_expiry = current_expiry_dt + timedelta(days=days)
-            else:
-                new_expiry = now + timedelta(days=days)
-
-            u["expires_at"] = new_expiry.isoformat()
-            u["plan"] = f"{days}d"
-            u["status"] = "active"
-
-            save_users(users)
-            return u
-
-    raise ValueError("User not found")
+    save_users(users)
+    return user
 
 
 # =========================
@@ -188,13 +194,12 @@ def extend_user(username: str, days: int) -> Dict:
     if tg_id:
         return extend_user_by_tg(tg_id, days)
 
-    # fallback для старых пользователей
+    # fallback
     now = datetime.utcnow()
+    current_expiry = safe_parse_date(user.get("expires_at"))
 
-    current_expiry_dt = safe_parse_date(user.get("expires_at"))
-
-    if current_expiry_dt and current_expiry_dt > now:
-        new_expiry = current_expiry_dt + timedelta(days=days)
+    if current_expiry and current_expiry > now:
+        new_expiry = current_expiry + timedelta(days=days)
     else:
         new_expiry = now + timedelta(days=days)
 
@@ -213,12 +218,28 @@ def extend_user(username: str, days: int) -> Dict:
 
 
 # =========================
+# ADMIN UTILS
+# =========================
+
+def set_expire(username: str, expires_at: str) -> Dict:
+    users = load_users()
+
+    for u in users:
+        if u.get("username") == username:
+            u["expires_at"] = expires_at
+            u["status"] = "active"
+            save_users(users)
+            return u
+
+    raise ValueError("User not found")
+
+
+# =========================
 # DELETE
 # =========================
 
 def delete_user(username: str) -> bool:
     users = load_users()
-
     new_users = [u for u in users if u.get("username") != username]
 
     if len(new_users) == len(users):
@@ -230,7 +251,6 @@ def delete_user(username: str) -> bool:
 
 def delete_user_by_tg(telegram_id: int) -> bool:
     users = load_users()
-
     new_users = [u for u in users if u.get("telegram_id") != int(telegram_id)]
 
     if len(new_users) == len(users):
@@ -238,15 +258,3 @@ def delete_user_by_tg(telegram_id: int) -> bool:
 
     save_users(new_users)
     return True
-
-
-# =========================
-# UTILS
-# =========================
-
-def generate_password(length: int = 12) -> str:
-    import random
-    import string
-
-    chars = string.ascii_letters + string.digits
-    return ''.join(random.choice(chars) for _ in range(length))
