@@ -258,3 +258,16 @@ def delete_user_by_tg(telegram_id: int) -> bool:
 
     save_users(new_users)
     return True
+
+
+def get_user(username: str):
+    """
+    ⚠️ LEGACY (используется vpn_service)
+    """
+    users = load_users()
+
+    for u in users:
+        if u.get("username") == username:
+            return u
+
+    return None
