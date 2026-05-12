@@ -1,16 +1,14 @@
-from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
-from aiogram import Bot
+from fastapi import APIRouter, Request, HTTPException
 import logging
 import hashlib
 import hmac
 
-from config.settings import PUBLIC_BOT_TOKEN, YOOKASSA_API_KEY
-from services.control_plane import process_successful_payment
+from config.settings import YOOKASSA_API_KEY
+from core.queue import push  # ← НОВОЕ
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhook")
-bot = Bot(token=PUBLIC_BOT_TOKEN)
 
 
 def verify_yookassa_signature(data: bytes, signature: str) -> bool:
@@ -23,15 +21,18 @@ def verify_yookassa_signature(data: bytes, signature: str) -> bool:
 
 
 @router.post("/yookassa")
-async def yookassa_webhook(request: Request, background: BackgroundTasks):
+async def yookassa_webhook(request: Request):
     body = await request.body()
     signature = request.headers.get("X-Yookassa-Signature")
 
     try:
         data = await request.json()
-        logger.info(f"YOOKASSA WEBHOOK received: {data.get('event')} | payment_id={data.get('object', {}).get('id')}")
 
-        # Верификация подписи (важно!)
+        logger.info(
+            f"YOOKASSA WEBHOOK received: {data.get('event')} | payment_id={data.get('object', {}).get('id')}"
+        )
+
+        # 🔐 Проверка подписи
         if not verify_yookassa_signature(body, signature):
             logger.warning("Invalid YooKassa signature")
             raise HTTPException(status_code=401, detail="Invalid signature")
@@ -52,16 +53,18 @@ async def yookassa_webhook(request: Request, background: BackgroundTasks):
             logger.error(f"Missing metadata in payment {payment_id}")
             raise HTTPException(status_code=400, detail="Missing metadata")
 
-        # Асинхронная обработка (чтобы webhook отвечал быстро)
-        background.add_task(
-            process_successful_payment,
-            user_id=str(user_id),
-            plan=str(plan),
-            payment_id=payment_id
-        )
+        # 🔥 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ — кладём в очередь
+        push({
+            "type": "payment",
+            "user_id": str(user_id),
+            "plan": str(plan),
+            "payment_id": payment_id
+        })
+
+        logger.info(f"Payment {payment_id} queued")
 
         return {"ok": True}
 
-    except Exception as e:
+    except Exception:
         logger.exception("Webhook error")
         raise HTTPException(status_code=500, detail="Internal error")
