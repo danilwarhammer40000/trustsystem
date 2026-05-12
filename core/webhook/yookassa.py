@@ -4,7 +4,7 @@ import hashlib
 import hmac
 
 from config.settings import YOOKASSA_API_KEY
-from core.queue import push  # ← НОВОЕ
+from core.queue import push
 
 logger = logging.getLogger(__name__)
 
@@ -15,8 +15,10 @@ def verify_yookassa_signature(data: bytes, signature: str) -> bool:
     """Проверка подписи от YooKassa"""
     if not signature:
         return False
+
     secret = YOOKASSA_API_KEY.encode()
     computed = hmac.new(secret, data, hashlib.sha256).hexdigest()
+
     return hmac.compare_digest(computed, signature)
 
 
@@ -28,22 +30,24 @@ async def yookassa_webhook(request: Request):
     try:
         data = await request.json()
 
+        event = data.get("event")
+        obj = data.get("object", {})
+
+        payment_id = obj.get("id")
+
         logger.info(
-            f"YOOKASSA WEBHOOK received: {data.get('event')} | payment_id={data.get('object', {}).get('id')}"
+            f"YOOKASSA WEBHOOK: event={event} payment_id={payment_id}"
         )
 
-        # 🔐 Проверка подписи
+        # 🔐 Верификация подписи
         if not verify_yookassa_signature(body, signature):
             logger.warning("Invalid YooKassa signature")
             raise HTTPException(status_code=401, detail="Invalid signature")
 
-        event = data.get("event")
-        obj = data.get("object", {})
-
+        # 🟢 Только успешные платежи
         if event != "payment.succeeded":
             return {"ok": True}
 
-        payment_id = obj.get("id")
         metadata = obj.get("metadata", {})
 
         user_id = metadata.get("user_id")
@@ -53,7 +57,7 @@ async def yookassa_webhook(request: Request):
             logger.error(f"Missing metadata in payment {payment_id}")
             raise HTTPException(status_code=400, detail="Missing metadata")
 
-        # 🔥 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ — кладём в очередь
+        # 🔥 КЛЮЧЕВОЕ: кладём в очередь
         push({
             "type": "payment",
             "user_id": str(user_id),
@@ -64,6 +68,9 @@ async def yookassa_webhook(request: Request):
         logger.info(f"Payment {payment_id} queued")
 
         return {"ok": True}
+
+    except HTTPException:
+        raise
 
     except Exception:
         logger.exception("Webhook error")
