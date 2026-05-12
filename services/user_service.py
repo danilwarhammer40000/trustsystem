@@ -1,168 +1,181 @@
+import json
+import os
 from datetime import datetime, timedelta
-import secrets
-import string
-import re
+from typing import List, Optional, Dict
 
-from core.db import load_users, save_users
+STORAGE_PATH = "/opt/trustsystem/storage/users.json"
 
 
 # =========================
-# HELPERS
+# LOW LEVEL
 # =========================
 
-def _generate_password(length: int = 12):
-    alphabet = string.ascii_letters + string.digits
-    return "".join(secrets.choice(alphabet) for _ in range(length))
+def load_users() -> List[Dict]:
+    if not os.path.exists(STORAGE_PATH):
+        return []
+
+    with open(STORAGE_PATH, "r") as f:
+        return json.load(f)
 
 
-def _save(users):
-    save_users(users)
-
-
-def _gen_username(tg_id: int):
-    return f"user_{tg_id}"
+def save_users(users: List[Dict]) -> None:
+    with open(STORAGE_PATH, "w") as f:
+        json.dump(users, f, indent=2)
 
 
 # =========================
-# CORE
+# FINDERS
 # =========================
 
-def get_user_by_tg(tg_id: str | int):
+def get_user_by_tg(telegram_id: int) -> Optional[Dict]:
+    users = load_users()
+    return next((u for u in users if u.get("telegram_id") == int(telegram_id)), None)
+
+
+def get_user_by_username(username: str) -> Optional[Dict]:
+    users = load_users()
+    return next((u for u in users if u.get("username") == username), None)
+
+
+def get_all_users() -> List[Dict]:
+    return load_users()
+
+
+# =========================
+# CREATE
+# =========================
+
+def create_user_if_not_exists(telegram_id: int) -> Dict:
     users = load_users()
 
-    for u in users:
-        if str(u.get("telegram_id")) == str(tg_id):
-            return u
+    existing = get_user_by_tg(telegram_id)
+    if existing:
+        return existing
 
-    return None
-
-
-def create_user_if_not_exists(tg_id: str | int):
-    users = load_users()
-
-    # уже есть
-    for u in users:
-        if str(u.get("telegram_id")) == str(tg_id):
-            return u
-
-    username = _gen_username(tg_id)
+    now = datetime.utcnow()
 
     user = {
-        "username": username,
-        "password": _generate_password(),
-        "telegram_id": int(tg_id),
+        "telegram_id": int(telegram_id),
+        "username": f"user_{telegram_id}",
+        "password": generate_password(),
         "plan": "trial",
-        "status": "inactive",
+        "status": "active",
         "trial_used": False,
-        "created_at": datetime.utcnow().isoformat(),
-        "expires_at": None
+        "created_at": now.isoformat(),
+        "expires_at": None,
     }
 
     users.append(user)
-    _save(users)
+    save_users(users)
 
     return user
-
-
-# =========================
-# TIME LOGIC
-# =========================
-
-def extend_user_by_tg(tg_id: str | int, days: int):
-    users = load_users()
-
-    for u in users:
-        if str(u.get("telegram_id")) == str(tg_id):
-            now = datetime.utcnow()
-
-            if u.get("expires_at"):
-                try:
-                    old = datetime.fromisoformat(u["expires_at"].replace("Z", "+00:00"))
-                    base = old if old > now else now
-                except:
-                    base = now
-            else:
-                base = now
-
-            new_expiry = base + timedelta(days=days)
-
-            u["status"] = "active"
-            u["expires_at"] = new_expiry.isoformat()
-            u["plan"] = f"{days}_days"
-
-            _save(users)
-            return u
-
-    raise ValueError("USER_NOT_FOUND")
 
 
 # =========================
 # TRIAL
 # =========================
 
-def activate_trial_by_tg(tg_id: str | int):
+def activate_trial(telegram_id: int, days: int = 3) -> Dict:
     users = load_users()
 
     for u in users:
-        if str(u.get("telegram_id")) == str(tg_id):
+        if u.get("telegram_id") == int(telegram_id):
 
             if u.get("trial_used"):
-                raise ValueError("TRIAL_ALREADY_USED")
+                return u
 
-            u["trial_used"] = True
+            now = datetime.utcnow()
             u["plan"] = "trial"
-            u["status"] = "active"
-            u["expires_at"] = (datetime.utcnow() + timedelta(days=3)).isoformat()
+            u["trial_used"] = True
+            u["expires_at"] = (now + timedelta(days=days)).isoformat()
 
-            _save(users)
+            save_users(users)
             return u
 
-    raise ValueError("USER_NOT_FOUND")
+    raise ValueError("User not found")
+
 
 # =========================
-# NEW SAFE METHODS (НЕ ЛОМАЮТ СТАРОЕ)
+# EXTEND (MAIN LOGIC)
 # =========================
 
-def get_user_by_tg(tg_id: int):
+def extend_user_by_tg(telegram_id: int, days: int) -> Dict:
     users = load_users()
 
     for u in users:
-        if u.get("telegram_id") == int(tg_id):
+        if u.get("telegram_id") == int(telegram_id):
+
+            now = datetime.utcnow()
+
+            current_expiry = u.get("expires_at")
+
+            if current_expiry:
+                current_expiry_dt = datetime.fromisoformat(current_expiry)
+
+                if current_expiry_dt > now:
+                    new_expiry = current_expiry_dt + timedelta(days=days)
+                else:
+                    new_expiry = now + timedelta(days=days)
+            else:
+                new_expiry = now + timedelta(days=days)
+
+            u["expires_at"] = new_expiry.isoformat()
+            u["plan"] = f"{days}d"
+            u["status"] = "active"
+
+            save_users(users)
             return u
 
-    return None
+    raise ValueError("User not found")
 
 
-def create_user_if_not_exists(tg_id: str):
-    tg_id = int(tg_id)
+# =========================
+# LEGACY EXTEND (BACKWARD COMPAT)
+# =========================
 
-    user = get_user_by_tg(tg_id)
-    if user:
-        return user
-
-    username = f"user_{tg_id}"
-
-    return create_user(
-        username=username,
-        tg_id=tg_id
-    )
-
-
-def extend_user_by_tg(tg_id: str, days: int):
-    tg_id = int(tg_id)
-
-    user = get_user_by_tg(tg_id)
+def extend_user(username: str, days: int) -> Dict:
+    user = get_user_by_username(username)
     if not user:
-        raise ValueError("USER_NOT_FOUND")
+        raise ValueError("User not found")
 
-    username = user.get("username")
-
-    return extend_user(username, days)
+    return extend_user_by_tg(user["telegram_id"], days)
 
 
 # =========================
-# BACKWARD COMPAT (ВАЖНО)
+# DELETE
 # =========================
 
-def get_all_users():
-    return load_users()
+def delete_user(username: str) -> bool:
+    users = load_users()
+
+    new_users = [u for u in users if u.get("username") != username]
+
+    if len(new_users) == len(users):
+        return False
+
+    save_users(new_users)
+    return True
+
+
+def delete_user_by_tg(telegram_id: int) -> bool:
+    users = load_users()
+
+    new_users = [u for u in users if u.get("telegram_id") != int(telegram_id)]
+
+    if len(new_users) == len(users):
+        return False
+
+    save_users(new_users)
+    return True
+
+
+# =========================
+# UTILS
+# =========================
+
+def generate_password(length: int = 12) -> str:
+    import random
+    import string
+
+    chars = string.ascii_letters + string.digits
+    return ''.join(random.choice(chars) for _ in range(length))
