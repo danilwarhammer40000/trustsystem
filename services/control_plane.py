@@ -17,94 +17,54 @@ logger = logging.getLogger(__name__)
 bot = Bot(token=PUBLIC_BOT_TOKEN)
 
 
-# =========================
-# MAIN PAYMENT PROCESSING
-# =========================
-
 async def process_successful_payment(
     user_id: str,
     plan: str,
     payment_id: str
 ) -> None:
-    """
-    ПРОДАКШН webhook обработчик (неубиваемый)
-    """
 
     try:
         logger.info(f"[WEBHOOK] payment={payment_id} user={user_id} plan={plan}")
 
-        # =========================
-        # 1. ИДЕМПОТЕНТНОСТЬ
-        # =========================
+        # 1. Идемпотентность
         if payment_id and is_paid(payment_id):
-            logger.info(f"[SKIP] Payment {payment_id} already processed")
+            logger.info(f"[SKIP] already processed {payment_id}")
             return
 
-        # =========================
-        # 2. ГАРАНТИЯ USER
-        # =========================
+        # 2. USER (через TG!)
         user = create_user_if_not_exists(user_id)
 
-        if not user:
-            logger.error(f"[FATAL] Cannot create/find user {user_id}")
-            return
+        # 3. План
+        days = int(plan)
 
-        # =========================
-        # 3. ПАРСИНГ ПЛАНА
-        # =========================
-        try:
-            days = int(plan)
-        except Exception:
-            logger.error(f"[ERROR] Invalid plan: {plan}")
-            return
-
-        # =========================
-        # 4. ПРОДЛЕНИЕ
-        # =========================
+        # 4. Продление
         updated_user = extend_user_by_tg(user_id, days)
-
-        if not updated_user:
-            logger.error(f"[ERROR] extend_user failed for {user_id}")
-            return
 
         username = updated_user.get("username")
 
-        logger.info(f"[OK] User {username} extended for {days} days")
+        logger.info(f"[OK] extended {username} for {days} days")
 
-        # =========================
-        # 5. СИНХРОНИЗАЦИЯ
-        # =========================
+        # 5. Sync
         try:
             full_sync()
             restart_trusttunnel()
         except Exception as e:
-            logger.error(f"[WARN] sync failed: {e}")
+            logger.error(f"sync error: {e}")
 
-        # =========================
-        # 6. ВЫДАЧА КОНФИГА
-        # =========================
-        try:
-            card = build_vpn_card(username)
+        # 6. VPN
+        card = build_vpn_card(username)
 
-            if card and "text" in card:
-                await bot.send_message(
-                    chat_id=int(user_id),
-                    text=card["text"],
-                    parse_mode="HTML"
-                )
-            else:
-                logger.error(f"[ERROR] card build failed for {username}")
+        await bot.send_message(
+            chat_id=int(user_id),
+            text=card["text"],
+            parse_mode="HTML"
+        )
 
-        except Exception as e:
-            logger.error(f"[ERROR] send message failed: {e}")
-
-        # =========================
-        # 7. ФИКСАЦИЯ ПЛАТЕЖА
-        # =========================
+        # 7. mark paid
         if payment_id:
             mark_paid(payment_id)
 
-        logger.info(f"[SUCCESS] payment {payment_id} done for {user_id}")
+        logger.info(f"[SUCCESS] payment done {payment_id}")
 
     except Exception as e:
-        logger.exception(f"[CRITICAL] payment processing failed: {payment_id}")
+        logger.exception(f"[CRITICAL] {payment_id}")
