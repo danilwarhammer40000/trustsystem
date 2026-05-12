@@ -1,14 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
-echo "=== TrustSystem Production Installer (final) ==="
+echo "=== TrustSystem Production Installer v2.1 (Worker Enabled) ==="
 
 PROJECT_DIR="/opt/trustsystem"
 REPO_URL="https://github.com/danilwarhammer40000/trustsystem.git"
 
 echo "[0/9] Waiting apt lock..."
 while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
-    echo "[INFO] apt locked, waiting..."
     sleep 3
 done
 
@@ -35,7 +34,7 @@ else
     cd "$PROJECT_DIR"
 fi
 
-echo "[4/9] Main venv..."
+echo "[4/9] Python env..."
 
 if [ ! -d "$PROJECT_DIR/venv" ]; then
     python3 -m venv "$PROJECT_DIR/venv"
@@ -45,26 +44,34 @@ source "$PROJECT_DIR/venv/bin/activate"
 
 pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
-
-# ВСЕ зависимости в один venv (включая webhook)
 pip install yookassa httpx redis fastapi uvicorn aiogram
 
 deactivate
 
+# =========================
+# 🔥 НОВОЕ: STORAGE
+# =========================
+echo "[5/9] Storage..."
 
+mkdir -p storage
+
+[ -f storage/users.json ] || echo "[]" > storage/users.json
+[ -f storage/payments.json ] || echo "[]" > storage/payments.json
+[ -f storage/queue.json ] || echo "[]" > storage/queue.json   # 🔥
+
+# =========================
+# CONFIG
+# =========================
 echo "[6/9] Configuration..."
 
 ENV_FILE="$PROJECT_DIR/.env"
 
-echo ""
 read -r -p "ADMIN_BOT_TOKEN: " ADMIN_BOT_TOKEN
 read -r -p "PUBLIC_BOT_TOKEN: " PUBLIC_BOT_TOKEN
 read -r -p "ADMIN_TG_ID: " ADMIN_TG_ID
 read -r -p "DOMAIN: " DOMAIN
 
-echo ""
 echo "=== YooKassa ==="
-
 read -r -p "YOOKASSA_SHOP_ID: " YOOKASSA_SHOP_ID
 read -r -p "YOOKASSA_API_KEY: " YOOKASSA_API_KEY
 
@@ -84,39 +91,38 @@ REDIS_PORT=6379
 EOF
 
 chmod 600 "$ENV_FILE"
-echo "[OK] .env saved"
 
-echo "[7/9] Systemd services..."
+# =========================
+# SYSTEMD
+# =========================
+echo "[7/9] Systemd..."
 
 install_unit () {
     cp "$PROJECT_DIR/systemd/$1" "/etc/systemd/system/$1"
-    chmod 644 "/etc/systemd/system/$1"
 }
 
-# services
 install_unit trustsystem-admin.service
 install_unit trustsystem-public.service
 install_unit trustsystem-expire.service
 install_unit trustsystem-webhook.service
 install_unit trustsystem-sync.service
+install_unit trustsystem-worker.service   # 🔥 НОВОЕ
 
-# timers
 install_unit trustsystem-expire.timer
 install_unit trustsystem-sync.timer
 
 systemctl daemon-reload
 
-# enable services
 systemctl enable trustsystem-admin.service
 systemctl enable trustsystem-public.service
 systemctl enable trustsystem-expire.service
 systemctl enable trustsystem-webhook.service
 systemctl enable trustsystem-sync.service
+systemctl enable trustsystem-worker.service   # 🔥
 
-# enable timers
-systemctl enable trustsystem-expire.timer
-systemctl enable trustsystem-sync.timer
-
+# =========================
+# START
+# =========================
 echo "[8/9] Starting services..."
 
 systemctl restart redis-server
@@ -125,29 +131,20 @@ systemctl restart trustsystem-admin.service
 systemctl restart trustsystem-public.service
 systemctl restart trustsystem-webhook.service
 systemctl restart trustsystem-sync.service
+systemctl restart trustsystem-worker.service   # 🔥
 
-# timers запускаются через start
 systemctl start trustsystem-expire.timer
 systemctl start trustsystem-sync.timer
 
-echo "[9/9] Status report"
+# =========================
+# STATUS
+# =========================
+echo "[9/9] Status"
 
-echo ""
-echo "=== SERVICES ==="
-systemctl status trustsystem-admin.service --no-pager || true
-systemctl status trustsystem-public.service --no-pager || true
 systemctl status trustsystem-webhook.service --no-pager || true
-systemctl status trustsystem-sync.service --no-pager || true
-
-echo ""
-echo "=== TIMERS ==="
-systemctl list-timers | grep trustsystem || true
-
-echo ""
-echo "=== REDIS ==="
-systemctl status redis-server --no-pager || true
+systemctl status trustsystem-worker.service --no-pager || true   # 🔥
 
 echo ""
 echo "=== DONE ==="
 echo "Logs:"
-echo "journalctl -u trustsystem-webhook -f"
+echo "journalctl -u trustsystem-worker -f"
