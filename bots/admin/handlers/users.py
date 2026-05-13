@@ -1,9 +1,14 @@
 from aiogram import Router, F, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from services.user_service import get_all_users, delete_user, get_user_by_username
+from services.user_service import get_all_users, delete_user
 
 router = Router()
+
+
+def find_user(username: str):
+    users = get_all_users() or []
+    return next((u for u in users if u.get("username") == username), None)
 
 
 # =========================
@@ -12,7 +17,6 @@ router = Router()
 
 @router.message(F.text == "📋 List users")
 async def list_users(message: types.Message):
-
     users = get_all_users() or []
 
     if not users:
@@ -40,7 +44,6 @@ async def list_users(message: types.Message):
 
 @router.message(F.text == "❌ Delete user")
 async def delete_menu(message: types.Message):
-
     users = get_all_users() or []
 
     if not users:
@@ -63,15 +66,14 @@ async def delete_menu(message: types.Message):
 
 
 # =========================
-# DELETE ACTION (SAFE + NEW LOGIC)
+# DELETE ACTION (FIXED)
 # =========================
 
 @router.callback_query(F.data.startswith("del:"))
 async def delete_cb(call: types.CallbackQuery):
-
     username = call.data.split(":")[1]
 
-    user = get_user_by_username(username)
+    user = find_user(username)
 
     if not user:
         await call.answer("User not found", show_alert=True)
@@ -83,7 +85,7 @@ async def delete_cb(call: types.CallbackQuery):
         await call.answer("No tg_id", show_alert=True)
         return
 
-    delete_user(int(tg_id))
+    delete_user(tg_id)
 
     await call.message.answer(f"❌ Deleted: {username}")
     await call.answer()
