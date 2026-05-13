@@ -7,79 +7,59 @@ from typing import List, Dict, Optional
 STORAGE_PATH = "/opt/trustsystem/storage/users.json"
 lock = threading.Lock()
 
-
-# =========================
-# STORAGE
-# =========================
-
 def load_users() -> List[Dict]:
     if not os.path.exists(STORAGE_PATH):
         return []
-
     try:
-        with open(STORAGE_PATH, "r") as f:
+        with open(STORAGE_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
             return data if isinstance(data, list) else []
-    except:
+    except Exception:
         return []
 
-
 def save_users(users: List[Dict]) -> None:
+    os.makedirs(os.path.dirname(STORAGE_PATH), exist_ok=True)
     with lock:
         tmp = STORAGE_PATH + ".tmp"
-        with open(tmp, "w") as f:
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(users, f, indent=2, ensure_ascii=False)
         os.replace(tmp, STORAGE_PATH)
 
-
-# =========================
-# SAFE PARSE
-# =========================
-
 def safe_int(value) -> Optional[int]:
-    try:
-        if value is None:
-            return None
-        return int(value)
-    except:
+    if value is None:
         return None
-
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 def safe_date(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
     try:
-        return datetime.fromisoformat(value) if value else None
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except:
         return None
 
-
-# =========================
-# CORE GET
-# =========================
-
-def get_user_by_tg(tg_id: int) -> Optional[Dict]:
+def get_user_by_tg(tg_id) -> Optional[Dict]:
     tg_id = safe_int(tg_id)
     if tg_id is None:
         return None
-
     users = load_users()
-    return next((u for u in users if safe_int(u.get("telegram_id")) == tg_id), None)
-
+    for u in users:
+        if safe_int(u.get("telegram_id")) == tg_id:
+            return u
+    return None
 
 def get_all_users() -> List[Dict]:
     return load_users()
 
-
-# =========================
-# CREATE SAFE
-# =========================
-
-def create_user(tg_id: int) -> Dict:
+def create_user(tg_id) -> Dict:   # только позиционный/один аргумент
     tg_id = safe_int(tg_id)
     if tg_id is None:
         raise ValueError("invalid tg_id")
 
     users = load_users()
-
     existing = get_user_by_tg(tg_id)
     if existing:
         return existing
@@ -94,43 +74,14 @@ def create_user(tg_id: int) -> Dict:
         "created_at": datetime.utcnow().isoformat(),
         "expires_at": None,
     }
-
     users.append(user)
     save_users(users)
     return user
-
-
-# =========================
-# UPDATE SINGLE SOURCE
-# =========================
-
-def _update_user(user: Dict) -> Dict:
-    users = load_users()
-
-    tg_id = safe_int(user.get("telegram_id"))
-    if tg_id is None:
-        raise ValueError("missing tg_id")
-
-    for i, u in enumerate(users):
-        if safe_int(u.get("telegram_id")) == tg_id:
-            users[i] = user
-            save_users(users)
-            return user
-
-    users.append(user)
-    save_users(users)
-    return user
-
-
-# =========================
-# EXTEND
-# =========================
 
 def extend_user(tg_id: int, days: int) -> Dict:
-    user = create_user(tg_id)
+    user = create_user(tg_id)  # dict
 
     days = safe_int(days) or 0
-
     now = datetime.utcnow()
     exp = safe_date(user.get("expires_at"))
 
@@ -142,14 +93,19 @@ def extend_user(tg_id: int, days: int) -> Dict:
     user["expires_at"] = new_exp.isoformat()
     user["status"] = "active"
 
-    return _update_user(user)
+    # обновляем
+    users = load_users()
+    tg = safe_int(user["telegram_id"])
+    for i, u in enumerate(users):
+        if safe_int(u.get("telegram_id")) == tg:
+            users[i] = user
+            break
+    else:
+        users.append(user)
+    save_users(users)
+    return user
 
-
-# =========================
-# DELETE SAFE
-# =========================
-
-def delete_user(tg_id: int) -> bool:
+def delete_user(tg_id) -> bool:
     tg_id = safe_int(tg_id)
     if tg_id is None:
         return False
@@ -163,7 +119,12 @@ def delete_user(tg_id: int) -> bool:
     save_users(new_users)
     return True
 
-
-def get_user_by_username(username: str):
-    users = load_users()
-    return next((u for u in users if u.get("username") == username), None)
+def activate_trial(tg_id):
+    user = create_user(tg_id)
+    if user.get("trial_used"):
+        raise ValueError("Trial already used")
+    user["trial_used"] = True
+    user["expires_at"] = (datetime.utcnow() + timedelta(days=3)).isoformat()
+    # обновить в файле (через extend_user логику или напрямую)
+    extend_user(tg_id, 0)  # просто чтобы сохранить флаги
+    return user
