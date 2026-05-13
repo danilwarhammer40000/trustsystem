@@ -6,6 +6,8 @@ from aiogram import Bot, Dispatcher
 from config.settings import ADMIN_BOT_TOKEN
 
 from bots.admin.middleware.access import AdminAccessMiddleware
+
+# routers
 from bots.admin.handlers import (
     start,
     stats,
@@ -21,6 +23,7 @@ from services.control_plane import sync_all_users
 # =========================
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 # =========================
@@ -40,27 +43,36 @@ dp.callback_query.middleware(AdminAccessMiddleware())
 
 
 # =========================
-# ROUTERS
+# ROUTERS (SAFE IMPORT BINDING)
 # =========================
 
-dp.include_router(start.router)
-dp.include_router(stats.router)
-dp.include_router(users.router)
-dp.include_router(manage.router)
+ROUTERS = [
+    start.router,
+    stats.router,
+    users.router,
+    manage.router,
+]
+
+for r in ROUTERS:
+    try:
+        dp.include_router(r)
+    except Exception as e:
+        logger.exception(f"[ROUTER LOAD ERROR] {e}")
 
 
 # =========================
-# SAFE SYNC LOOP (FIXED)
+# SYNC LOOP
 # =========================
 
 async def scheduler_loop():
     while True:
         try:
-            logging.info("[SYNC] start")
+            logger.info("[SYNC] start")
             await asyncio.to_thread(sync_all_users)
-            logging.info("[SYNC] done")
+            logger.info("[SYNC] done")
+
         except Exception as e:
-            logging.exception(f"[SYNC ERROR] {e}")
+            logger.exception(f"[SYNC ERROR] {e}")
 
         await asyncio.sleep(300)
 
@@ -70,15 +82,22 @@ async def scheduler_loop():
 # =========================
 
 async def main():
-    logging.info("ADMIN BOT STARTED")
+    logger.info("ADMIN BOT STARTED")
 
-    # запуск фоновой задачи
+    # background task
     asyncio.create_task(scheduler_loop())
 
     try:
         await dp.start_polling(bot)
+
+    except Exception as e:
+        logger.exception(f"[BOT CRASH] {e}")
+
     finally:
-        await bot.session.close()
+        try:
+            await bot.session.close()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
