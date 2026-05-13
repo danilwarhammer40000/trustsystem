@@ -9,38 +9,37 @@ def _format_date(dt_str: str | None) -> str:
     try:
         dt = datetime.fromisoformat(dt_str)
         return dt.strftime("%Y-%m-%d")
-    except:
-        return dt_str
+    except Exception:
+        return dt_str or "∞"
 
 
-def _extract_username_from_link(link: str) -> str:
-    try:
-        return link.rstrip("/").split("/")[-1]
-    except:
-        return ""
+def build_vpn_card(telegram_id: str) -> dict:
+    """
+    Вся логика теперь строится от TG-ID
+    """
 
-
-def build_vpn_card(username: str) -> dict:
-    vpn = get_vpn_link(username)
+    vpn = get_vpn_link(telegram_id)
 
     link = vpn.get("link", "")
     password = vpn.get("password", "")
+    username = vpn.get("username", "")
     expires_at = _format_date(vpn.get("expires_at"))
 
-    # FIX: универсальный QR payload
-    # теперь не зависит от tt://
     qr_payload = f"user={username}"
 
-    # если вдруг появится токенизация — расширяем здесь
+    # fallback логика (если появится иной формат link)
     if "connect/" in link:
-        qr_payload = _extract_username_from_link(link)
+        try:
+            qr_payload = link.rstrip("/").split("/")[-1]
+        except Exception:
+            qr_payload = username
 
     card_text = (
         f"👤 {username}\n"
         f"🔑 {password}\n"
         f"⏳ {expires_at}\n\n"
         f"🔗 {link}\n\n"
-        f"To connect on mobile, scan QR:\n"
+        f"Scan QR:\n"
         f"https://trusttunnel.org/qr.html#tt={qr_payload}"
     )
 
