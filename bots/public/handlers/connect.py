@@ -2,7 +2,7 @@ from aiogram import Router, types
 from services.payment_service import create_payment
 from services.public_user_service import get_or_create
 from services.user_service import activate_trial
-from core.sync import full_sync          # ← должно быть здесь
+from core.sync import full_sync
 from services.vpn_card_builder import build_vpn_card
 
 router = Router()
@@ -31,7 +31,7 @@ async def buy(message: types.Message):
 
     await message.answer(
         f"💳 Оплата: {payment.get('amount', 0)} RUB\n\n"
-        f"{payment.get('url')}\n\n"
+        f"{payment.get('url', 'Ошибка создания ссылки')}\n\n"
         "⏳ После оплаты доступ придёт автоматически."
     )
 
@@ -42,15 +42,15 @@ async def trial(message: types.Message):
     try:
         user = activate_trial(tg_id)
         full_sync()
-        card = build_vpn_card(str(tg_id))          # теперь по tg_id
+        card = build_vpn_card(str(tg_id))
         await message.answer(card.get("text", "✅ Триал активирован!"))
     except ValueError:
         await message.answer("❌ Триал уже использован")
     except Exception as e:
-        await message.answer("❌ Ошибка. Попробуйте позже.")
-        print("[TRIAL ERROR]", e)
+        await message.answer("❌ Ошибка активации")
+        print(f"[TRIAL ERROR] {e}")
 
 
 @router.message(lambda m: m.text == "⬅️ Назад")
 async def back(message: types.Message):
-    await message.answer("Возвращаемся в главное меню /start")
+    await message.answer("Главное меню — /start")
