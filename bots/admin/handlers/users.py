@@ -1,13 +1,13 @@
 from aiogram import Router, F, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from services.user_service import get_all_users, delete_user
+from services.user_service import get_all_users, delete_user, get_user_by_username
 
 router = Router()
 
 
 # =========================
-# LIST USERS (FIXED UI)
+# LIST USERS
 # =========================
 
 @router.message(F.text == "📋 List users")
@@ -63,7 +63,7 @@ async def delete_menu(message: types.Message):
 
 
 # =========================
-# DELETE ACTION (FIXED)
+# DELETE ACTION (SAFE + NEW LOGIC)
 # =========================
 
 @router.callback_query(F.data.startswith("del:"))
@@ -71,11 +71,19 @@ async def delete_cb(call: types.CallbackQuery):
 
     username = call.data.split(":")[1]
 
-    if not username:
-        await call.answer("Invalid user", show_alert=True)
+    user = get_user_by_username(username)
+
+    if not user:
+        await call.answer("User not found", show_alert=True)
         return
 
-    result = delete_user(username)
+    tg_id = user.get("telegram_id")
+
+    if not tg_id:
+        await call.answer("No tg_id", show_alert=True)
+        return
+
+    delete_user(int(tg_id))
 
     await call.message.answer(f"❌ Deleted: {username}")
     await call.answer()
