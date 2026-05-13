@@ -9,19 +9,6 @@ lock = threading.Lock()
 
 
 # =========================
-# SAFE CAST
-# =========================
-
-def safe_tg_id(value) -> Optional[int]:
-    try:
-        if value is None:
-            return None
-        return int(value)
-    except:
-        return None
-
-
-# =========================
 # STORAGE
 # =========================
 
@@ -46,35 +33,50 @@ def save_users(users: List[Dict]) -> None:
 
 
 # =========================
-# FINDERS (SAFE)
+# SAFE PARSE
 # =========================
 
-def get_all_users():
-    return load_users()
+def safe_int(value) -> Optional[int]:
+    try:
+        if value is None:
+            return None
+        return int(value)
+    except:
+        return None
 
 
-def get_user_by_tg(tg_id):
-    tg_id = safe_tg_id(tg_id)
+def safe_date(value: Optional[str]) -> Optional[datetime]:
+    try:
+        return datetime.fromisoformat(value) if value else None
+    except:
+        return None
+
+
+# =========================
+# CORE GET
+# =========================
+
+def get_user_by_tg(tg_id: int) -> Optional[Dict]:
+    tg_id = safe_int(tg_id)
     if tg_id is None:
         return None
 
     users = load_users()
-    return next((u for u in users if safe_tg_id(u.get("telegram_id")) == tg_id), None)
+    return next((u for u in users if safe_int(u.get("telegram_id")) == tg_id), None)
 
 
-def get_user_by_username(username: str):
-    users = load_users()
-    return next((u for u in users if u.get("username") == username), None)
+def get_all_users() -> List[Dict]:
+    return load_users()
 
 
 # =========================
-# CREATE
+# CREATE SAFE
 # =========================
 
 def create_user(tg_id: int) -> Dict:
-    tg_id = safe_tg_id(tg_id)
+    tg_id = safe_int(tg_id)
     if tg_id is None:
-        raise ValueError("tg_id required")
+        raise ValueError("invalid tg_id")
 
     users = load_users()
 
@@ -85,7 +87,7 @@ def create_user(tg_id: int) -> Dict:
     user = {
         "telegram_id": tg_id,
         "username": f"user_{tg_id}",
-        "password": _password(),
+        "password": "auto",
         "plan": "trial",
         "status": "active",
         "trial_used": False,
@@ -98,20 +100,19 @@ def create_user(tg_id: int) -> Dict:
     return user
 
 
-def _password():
-    import random, string
-    return ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(12))
-
-
 # =========================
-# UPDATE CORE
+# UPDATE SINGLE SOURCE
 # =========================
 
-def _write(users, user):
-    tg_id = safe_tg_id(user.get("telegram_id"))
+def _update_user(user: Dict) -> Dict:
+    users = load_users()
+
+    tg_id = safe_int(user.get("telegram_id"))
+    if tg_id is None:
+        raise ValueError("missing tg_id")
 
     for i, u in enumerate(users):
-        if safe_tg_id(u.get("telegram_id")) == tg_id:
+        if safe_int(u.get("telegram_id")) == tg_id:
             users[i] = user
             save_users(users)
             return user
@@ -126,80 +127,43 @@ def _write(users, user):
 # =========================
 
 def extend_user(tg_id: int, days: int) -> Dict:
-    tg_id = safe_tg_id(tg_id)
-    if tg_id is None:
-        raise ValueError("invalid tg_id")
+    user = create_user(tg_id)
 
-    users = load_users()
-    user = get_user_by_tg(tg_id)
-
-    if not user:
-        user = create_user(tg_id)
-        users = load_users()
+    days = safe_int(days) or 0
 
     now = datetime.utcnow()
+    exp = safe_date(user.get("expires_at"))
 
-    try:
-        current = datetime.fromisoformat(user["expires_at"]) if user.get("expires_at") else None
-    except:
-        current = None
-
-    if current and current > now:
-        new_exp = current + timedelta(days=days)
+    if exp and exp > now:
+        new_exp = exp + timedelta(days=days)
     else:
         new_exp = now + timedelta(days=days)
 
     user["expires_at"] = new_exp.isoformat()
     user["status"] = "active"
-    user["plan"] = f"{days}d"
 
-    return _write(users, user)
-
-
-# =========================
-# SETTERS
-# =========================
-
-def set_expire(username: str, iso: str):
-    users = load_users()
-    user = get_user_by_username(username)
-
-    if not user:
-        raise ValueError("not found")
-
-    user["expires_at"] = iso
-    return _write(users, user)
-
-
-def set_user_field(tg_id, field, value):
-    tg_id = safe_tg_id(tg_id)
-    if tg_id is None:
-        return None
-
-    users = load_users()
-    user = get_user_by_tg(tg_id)
-
-    if not user:
-        return None
-
-    user[field] = value
-    return _write(users, user)
+    return _update_user(user)
 
 
 # =========================
-# DELETE
+# DELETE SAFE
 # =========================
 
-def delete_user(tg_id):
-    tg_id = safe_tg_id(tg_id)
+def delete_user(tg_id: int) -> bool:
+    tg_id = safe_int(tg_id)
     if tg_id is None:
         return False
 
     users = load_users()
-    new_users = [u for u in users if safe_tg_id(u.get("telegram_id")) != tg_id]
+    new_users = [u for u in users if safe_int(u.get("telegram_id")) != tg_id]
 
     if len(new_users) == len(users):
         return False
 
     save_users(new_users)
     return True
+
+
+def get_user_by_username(username: str):
+    users = load_users()
+    return next((u for u in users if u.get("username") == username), None)
