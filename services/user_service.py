@@ -17,7 +17,7 @@ def load_users() -> List[Dict]:
     except Exception:
         return []
 
-def save_users(users: List[Dict]) -> None:
+def save_users(users: List[Dict]):
     os.makedirs(os.path.dirname(STORAGE_PATH), exist_ok=True)
     with lock:
         tmp = STORAGE_PATH + ".tmp"
@@ -25,19 +25,11 @@ def save_users(users: List[Dict]) -> None:
             json.dump(users, f, indent=2, ensure_ascii=False)
         os.replace(tmp, STORAGE_PATH)
 
-def safe_int(value) -> Optional[int]:
-    if value is None:
+def safe_int(v) -> Optional[int]:
+    if v is None:
         return None
     try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-def safe_date(value: Optional[str]) -> Optional[datetime]:
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return int(v)
     except:
         return None
 
@@ -45,8 +37,7 @@ def get_user_by_tg(tg_id) -> Optional[Dict]:
     tg_id = safe_int(tg_id)
     if tg_id is None:
         return None
-    users = load_users()
-    for u in users:
+    for u in load_users():
         if safe_int(u.get("telegram_id")) == tg_id:
             return u
     return None
@@ -54,54 +45,49 @@ def get_user_by_tg(tg_id) -> Optional[Dict]:
 def get_all_users() -> List[Dict]:
     return load_users()
 
-def create_user(tg_id) -> Dict:   # только позиционный/один аргумент
+def create_user(tg_id) -> Dict:
     tg_id = safe_int(tg_id)
     if tg_id is None:
-        raise ValueError("invalid tg_id")
+        raise ValueError("Invalid tg_id")
 
     users = load_users()
-    existing = get_user_by_tg(tg_id)
-    if existing:
-        return existing
+    if any(safe_int(u.get("telegram_id")) == tg_id for u in users):
+        return get_user_by_tg(tg_id)
 
     user = {
         "telegram_id": tg_id,
         "username": f"user_{tg_id}",
         "password": "auto",
-        "plan": "trial",
         "status": "active",
         "trial_used": False,
         "created_at": datetime.utcnow().isoformat(),
-        "expires_at": None,
+        "expires_at": (datetime.utcnow() + timedelta(days=3)).isoformat(),
     }
     users.append(user)
     save_users(users)
     return user
 
-def extend_user(tg_id: int, days: int) -> Dict:
-    user = create_user(tg_id)  # dict
-
-    days = safe_int(days) or 0
+def extend_user(tg_id: int, days: int = 30) -> Dict:
+    user = create_user(tg_id)
     now = datetime.utcnow()
-    exp = safe_date(user.get("expires_at"))
+    exp = None
+    if user.get("expires_at"):
+        try:
+            exp = datetime.fromisoformat(user["expires_at"].replace("Z", "+00:00"))
+        except:
+            pass
 
-    if exp and exp > now:
-        new_exp = exp + timedelta(days=days)
-    else:
-        new_exp = now + timedelta(days=days)
+    new_exp = max(exp, now) + timedelta(days=days) if exp else now + timedelta(days=days)
 
     user["expires_at"] = new_exp.isoformat()
     user["status"] = "active"
 
-    # обновляем
+    # update
     users = load_users()
-    tg = safe_int(user["telegram_id"])
     for i, u in enumerate(users):
-        if safe_int(u.get("telegram_id")) == tg:
+        if safe_int(u.get("telegram_id")) == tg_id:
             users[i] = user
             break
-    else:
-        users.append(user)
     save_users(users)
     return user
 
@@ -109,22 +95,22 @@ def delete_user(tg_id) -> bool:
     tg_id = safe_int(tg_id)
     if tg_id is None:
         return False
-
-    users = load_users()
-    new_users = [u for u in users if safe_int(u.get("telegram_id")) != tg_id]
-
-    if len(new_users) == len(users):
-        return False
-
-    save_users(new_users)
+    users = [u for u in load_users() if safe_int(u.get("telegram_id")) != tg_id]
+    save_users(users)
     return True
 
 def activate_trial(tg_id):
-    user = create_user(tg_id)
-    if user.get("trial_used"):
+    user = get_user_by_tg(tg_id)
+    if user and user.get("trial_used"):
         raise ValueError("Trial already used")
+    user = create_user(tg_id)
     user["trial_used"] = True
     user["expires_at"] = (datetime.utcnow() + timedelta(days=3)).isoformat()
-    # обновить в файле (через extend_user логику или напрямую)
-    extend_user(tg_id, 0)  # просто чтобы сохранить флаги
+    # save
+    users = load_users()
+    for i, u in enumerate(users):
+        if safe_int(u.get("telegram_id")) == tg_id:
+            users[i] = user
+            break
+    save_users(users)
     return user
