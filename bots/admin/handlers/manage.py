@@ -9,11 +9,12 @@ from bots.admin.states.user import AddUser, ManualDate
 from bots.admin.keyboards.main import main_menu
 
 from services.user_service import (
-    create_user_if_not_exists,
+    create_user,
     get_all_users,
     delete_user,
-    extend_user_by_tg,
-    set_expire
+    extend_user,
+    get_user_by_tg,
+    _update_user
 )
 
 from services.control_plane import sync_all_users
@@ -164,23 +165,22 @@ async def show_days(target):
 
 
 # =========================
-# CREATE USER (TG-ID CORE FIX)
+# CREATE USER (TG-ID CORE)
 # =========================
 
 @router.callback_query(F.data.startswith("days:"))
 async def add_finish(call: CallbackQuery, state: FSMContext):
     days = int(call.data.split(":")[1])
-    data = await state.get_data()
 
     try:
-        user = create_user_if_not_exists(int(call.from_user.id))
+        tg_id = int(call.from_user.id)
 
-        user = extend_user_by_tg(user["telegram_id"], days)
-        username = user["username"]
+        user = create_user(tg_id)
+        user = extend_user(tg_id, days)
 
         await asyncio.to_thread(sync_all_users)
 
-        link = clean_link(generate_link(username, DOMAIN))
+        link = clean_link(generate_link(user["username"], DOMAIN))
 
         await call.message.answer(
             build_user_card(user, link),
@@ -242,21 +242,19 @@ async def user_menu(call: CallbackQuery):
 
 
 # =========================
-# EXTEND (TG-ID FIXED)
+# EXTEND (TG-ID ONLY)
 # =========================
 
 @router.callback_query(F.data.startswith("ext:"))
 async def extend_apply(call: CallbackQuery):
     _, username, days = call.data.split(":")
 
-    users = get_all_users()
-    user = next((u for u in users if u["username"] == username), None)
-
+    user = next((u for u in get_all_users() if u["username"] == username), None)
     if not user:
         await call.message.answer("User not found")
         return
 
-    updated = extend_user_by_tg(user["telegram_id"], int(days))
+    updated = extend_user(user["telegram_id"], int(days))
 
     await asyncio.to_thread(sync_all_users)
 
@@ -268,7 +266,7 @@ async def extend_apply(call: CallbackQuery):
 
 
 # =========================
-# MANUAL DATE
+# MANUAL DATE (FIXED TG-ID SAFE)
 # =========================
 
 @router.callback_query(F.data.startswith("manual:"))
@@ -288,7 +286,14 @@ async def manual_apply(msg: Message, state: FSMContext):
 
     try:
         dt = datetime.fromisoformat(msg.text.strip())
-        set_expire(data["username"], dt.isoformat())
+
+        user = next((u for u in get_all_users() if u["username"] == data["username"]), None)
+        if not user:
+            await msg.answer("User not found")
+            return
+
+        user["expires_at"] = dt.isoformat()
+        _update_user(user)
 
         await asyncio.to_thread(sync_all_users)
         await msg.answer("✅ Updated")
@@ -307,7 +312,10 @@ async def manual_apply(msg: Message, state: FSMContext):
 async def delete_cb(call: CallbackQuery):
     username = call.data.split(":")[1]
 
-    delete_user(username)
+    user = next((u for u in get_all_users() if u["username"] == username), None)
+    if user:
+        delete_user(user["telegram_id"])
+
     await asyncio.to_thread(sync_all_users)
 
     await call.message.answer("❌ Deleted")
@@ -333,9 +341,7 @@ async def sync_btn(msg: Message):
 async def get_link(call: CallbackQuery):
     username = call.data.split(":")[1]
 
-    users = get_all_users()
-    user = next((u for u in users if u["username"] == username), None)
-
+    user = next((u for u in get_all_users() if u["username"] == username), None)
     if not user:
         await call.message.answer("User not found")
         return
