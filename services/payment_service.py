@@ -1,7 +1,9 @@
 import uuid
 import json
 import threading
+import os
 from datetime import datetime
+from typing import Optional, Dict, List
 
 from yookassa import Configuration, Payment
 from config.settings import YOOKASSA_SHOP_ID, YOOKASSA_API_KEY
@@ -9,7 +11,7 @@ from config.settings import YOOKASSA_SHOP_ID, YOOKASSA_API_KEY
 Configuration.account_id = YOOKASSA_SHOP_ID
 Configuration.secret_key = YOOKASSA_API_KEY
 
-FILE = "storage/payments.json"
+FILE = "/opt/trustsystem/storage/payments.json"
 lock = threading.Lock()
 
 
@@ -17,21 +19,24 @@ lock = threading.Lock()
 # STORAGE
 # =========================
 
-def load():
+def load() -> List[Dict]:
+    if not os.path.exists(FILE):
+        return []
+
     try:
         with open(FILE, "r") as f:
             return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
+    except Exception:
         return []
 
 
-def save(data):
+def save(data: List[Dict]):
     with lock:
         tmp_file = FILE + ".tmp"
+
         with open(tmp_file, "w") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
 
-        import os
         os.replace(tmp_file, FILE)
 
 
@@ -49,6 +54,7 @@ def create_payment(plan: str, tg_id: int):
     if amount is None:
         raise ValueError("INVALID_PLAN")
 
+    tg_id = int(tg_id)
     username = f"user_{tg_id}"
     idempotence_key = str(uuid.uuid4())
 
@@ -65,9 +71,8 @@ def create_payment(plan: str, tg_id: int):
             "capture": True,
             "description": "VPN access",
             "metadata": {
-                "user_id": str(tg_id),   # ❗ КРИТИЧНО: единый ключ для webhook
-                "plan": plan,
-                "username": username
+                "user_id": str(tg_id),  # для webhook
+                "plan": plan
             }
         },
         idempotence_key
@@ -76,9 +81,16 @@ def create_payment(plan: str, tg_id: int):
     data = load()
 
     # защита от дублей
+    if any(p.get("id") == payment.id for p in data):
+        return {
+            "url": payment.confirmation.confirmation_url,
+            "amount": amount,
+            "payment_id": payment.id
+        }
+
     data.append({
         "id": payment.id,
-        "user_id": str(tg_id),
+        "tg_id": tg_id,
         "username": username,
         "plan": plan,
         "status": "pending",
@@ -99,7 +111,7 @@ def create_payment(plan: str, tg_id: int):
 # PAYMENT STATUS
 # =========================
 
-def mark_paid(payment_id: str):
+def mark_paid(payment_id: str) -> Optional[Dict]:
     data = load()
 
     for p in data:
@@ -128,10 +140,10 @@ def is_paid(payment_id: str) -> bool:
 
 
 # =========================
-# SAFE HELPERS
+# HELPERS
 # =========================
 
-def get_payment(payment_id: str):
+def get_payment(payment_id: str) -> Optional[Dict]:
     data = load()
 
     for p in data:
@@ -139,3 +151,10 @@ def get_payment(payment_id: str):
             return p
 
     return None
+
+
+def get_user_payments(tg_id: int) -> List[Dict]:
+    data = load()
+    tg_id = int(tg_id)
+
+    return [p for p in data if p.get("tg_id") == tg_id]
