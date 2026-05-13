@@ -13,7 +13,8 @@ from services.user_service import (
     get_all_users,
     delete_user,
     extend_user,
-    get_user_by_tg
+    set_expire,
+    set_user_field
 )
 
 from services.control_plane import sync_all_users
@@ -31,10 +32,9 @@ def format_expire(v):
     if not v:
         return "∞"
     try:
-        dt = datetime.fromisoformat(v)
-        return dt.strftime("%Y-%m-%d")
+        return datetime.fromisoformat(v).strftime("%Y-%m-%d")
     except:
-        return "?"
+        return "∞"
 
 
 def status(v):
@@ -58,7 +58,7 @@ def card(user, link):
 
 
 # =========================
-# CREATE USER
+# ADD USER
 # =========================
 
 @router.callback_query(F.data.startswith("days:"))
@@ -111,4 +111,5 @@ async def delete(call: CallbackQuery):
         delete_user(user["telegram_id"])
 
     await asyncio.to_thread(sync_all_users)
+
     await call.message.answer("deleted")
