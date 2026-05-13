@@ -1,28 +1,13 @@
-from services.user_service import create_user
-from core.db import load_users
+from services.user_service import create_user, get_user_by_tg
 
-def _gen_username(tg_id: int):
-    return f"user_{tg_id}"
 
 def get_or_create(tg_id: int):
-    users = load_users()
+    user = get_user_by_tg(tg_id)
+    if user:
+        return user
 
-    for u in users:
-        if u.get("telegram_id") == tg_id:
-            return u
+    return create_user(tg_id)
 
-    username = _gen_username(tg_id)
-
-    return create_user(
-        username=username,
-        tg_id=tg_id
-    )
 
 def get_by_tg(tg_id: int):
-    users = load_users()
-
-    for u in users:
-        if u.get("telegram_id") == tg_id:
-            return u
-
-    return None
+    return get_user_by_tg(tg_id)
