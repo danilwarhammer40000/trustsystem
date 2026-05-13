@@ -53,4 +53,8 @@ async def trial(message: types.Message):
 
 @router.message(lambda m: m.text == "⬅️ Назад")
 async def back(message: types.Message):
-    await message.answer("Главное меню — /start")
+    kb = types.ReplyKeyboardMarkup(
+        keyboard=[[types.KeyboardButton(text="🚀 Подключиться")]],
+        resize_keyboard=True
+    )
+    await message.answer("Главное меню:", reply_markup=kb)
