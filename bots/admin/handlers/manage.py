@@ -9,10 +9,10 @@ from bots.admin.states.user import AddUser, ManualDate
 from bots.admin.keyboards.main import main_menu
 
 from services.user_service import (
-    create_user,
+    create_user_if_not_exists,
     get_all_users,
     delete_user,
-    extend_user,
+    extend_user_by_tg,
     set_expire
 )
 
@@ -20,7 +20,6 @@ from services.control_plane import sync_all_users
 
 from core.generator import generate_link
 from config.settings import DOMAIN
-
 
 router = Router()
 
@@ -35,10 +34,8 @@ def format_expire(date_str):
 
     try:
         dt = datetime.fromisoformat(date_str)
-
         if dt.year >= 2099:
             return "∞"
-
         return dt.strftime("%y-%m-%d")
     except:
         return "?"
@@ -50,18 +47,10 @@ def status_emoji(date_str):
 
     try:
         dt = datetime.fromisoformat(date_str)
-
-        if dt.year >= 2099:
-            return "🟢"
-
         return "🟢" if dt > datetime.utcnow() else "🔴"
     except:
         return "🔴"
 
-
-# =========================
-# LINK CLEANER
-# =========================
 
 def clean_link(link: str) -> str:
     if not link:
@@ -82,17 +71,13 @@ def build_user_card(user, link):
     expire = format_expire(user.get("expires_at"))
     link = clean_link(link)
 
-    if "tt://" in link:
-        qr_token = link.replace("tt://?", "")
-    else:
-        qr_token = link
+    qr_token = link.replace("tt://?", "") if "tt://" in link else link
 
     return (
         f"👤 {user['username']}\n"
         f"🔑 {user['password']}\n"
         f"⏳ {expire}\n\n"
         f"🔗 {link}\n\n"
-        f"To connect on mobile, scan QR:\n"
         f"https://trusttunnel.org/qr.html#tt={qr_token}"
     )
 
@@ -106,7 +91,7 @@ def cancel_inline():
 
 
 # =========================
-# GLOBAL CANCEL
+# CANCEL
 # =========================
 
 @router.callback_query(F.data == "cancel")
@@ -143,10 +128,6 @@ async def add_username(msg: Message, state: FSMContext):
     await msg.answer("Select password type:", reply_markup=kb)
 
 
-# =========================
-# PASSWORD
-# =========================
-
 @router.callback_query(F.data.startswith("pass:"))
 async def password_select(call: CallbackQuery, state: FSMContext):
     mode = call.data.split(":")[1]
@@ -167,10 +148,6 @@ async def add_password(msg: Message, state: FSMContext):
     await show_days(msg)
 
 
-# =========================
-# DAYS
-# =========================
-
 async def show_days(target):
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -187,7 +164,7 @@ async def show_days(target):
 
 
 # =========================
-# CREATE USER
+# CREATE USER (TG-ID CORE FIX)
 # =========================
 
 @router.callback_query(F.data.startswith("days:"))
@@ -196,17 +173,14 @@ async def add_finish(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
 
     try:
-        user = create_user(
-            username=data["username"],
-            password=data.get("password")
-        )
+        user = create_user_if_not_exists(int(call.from_user.id))
 
-        user = extend_user(user["username"], days)
+        user = extend_user_by_tg(user["telegram_id"], days)
+        username = user["username"]
 
-        # ✅ НОВАЯ ЛОГИКА
         await asyncio.to_thread(sync_all_users)
 
-        link = clean_link(generate_link(user["username"], DOMAIN))
+        link = clean_link(generate_link(username, DOMAIN))
 
         await call.message.answer(
             build_user_card(user, link),
@@ -268,19 +242,28 @@ async def user_menu(call: CallbackQuery):
 
 
 # =========================
-# EXTEND
+# EXTEND (TG-ID FIXED)
 # =========================
 
 @router.callback_query(F.data.startswith("ext:"))
 async def extend_apply(call: CallbackQuery):
     _, username, days = call.data.split(":")
-    user = extend_user(username, int(days))
+
+    users = get_all_users()
+    user = next((u for u in users if u["username"] == username), None)
+
+    if not user:
+        await call.message.answer("User not found")
+        return
+
+    updated = extend_user_by_tg(user["telegram_id"], int(days))
 
     await asyncio.to_thread(sync_all_users)
 
-    expire = format_expire(user.get("expires_at"))
+    await call.message.answer(
+        f"✅ {username}\n⏳ {format_expire(updated.get('expires_at'))}"
+    )
 
-    await call.message.answer(f"✅ {username}\n⏳ {expire}")
     await call.answer()
 
 
@@ -305,42 +288,15 @@ async def manual_apply(msg: Message, state: FSMContext):
 
     try:
         dt = datetime.fromisoformat(msg.text.strip())
-        set_expire(data["username"], dt)
+        set_expire(data["username"], dt.isoformat())
 
         await asyncio.to_thread(sync_all_users)
-
         await msg.answer("✅ Updated")
 
     except:
         await msg.answer("❌ Invalid date")
 
     await state.clear()
-
-
-# =========================
-# GET LINK
-# =========================
-
-@router.callback_query(F.data.startswith("link:"))
-async def get_link(call: CallbackQuery):
-    username = call.data.split(":")[1]
-
-    users = get_all_users() or []
-    user = next((u for u in users if u["username"] == username), None)
-
-    if not user:
-        await call.message.answer("❌ User not found")
-        await call.answer()
-        return
-
-    link = clean_link(generate_link(username, DOMAIN))
-
-    await call.message.answer(
-        build_user_card(user, link),
-        reply_markup=main_menu
-    )
-
-    await call.answer()
 
 
 # =========================
@@ -352,7 +308,6 @@ async def delete_cb(call: CallbackQuery):
     username = call.data.split(":")[1]
 
     delete_user(username)
-
     await asyncio.to_thread(sync_all_users)
 
     await call.message.answer("❌ Deleted")
@@ -369,28 +324,27 @@ async def sync_btn(msg: Message):
     await asyncio.to_thread(sync_all_users)
     await msg.answer("✅ Done")
 
+
 # =========================
-# GET LINK (MENU BUTTON)
+# GET LINK
 # =========================
 
-@router.message(F.text == "🔗 Get link")
-async def get_link_menu(msg: Message):
-    users = get_all_users() or []
+@router.callback_query(F.data.startswith("link:"))
+async def get_link(call: CallbackQuery):
+    username = call.data.split(":")[1]
 
-    if not users:
-        await msg.answer("No users")
+    users = get_all_users()
+    user = next((u for u in users if u["username"] == username), None)
+
+    if not user:
+        await call.message.answer("User not found")
         return
 
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=u["username"],
-                    callback_data=f"link:{u['username']}"
-                )
-            ]
-            for u in users
-        ]
+    link = clean_link(generate_link(username, DOMAIN))
+
+    await call.message.answer(
+        build_user_card(user, link),
+        reply_markup=main_menu
     )
 
-    await msg.answer("Select user:", reply_markup=kb)
+    await call.answer()
