@@ -1,31 +1,38 @@
 import json
 import os
-import threading
 import time
+from filelock import FileLock
 
-QUEUE_FILE = "storage/queue.json"
-LOCK = threading.Lock()
+QUEUE_FILE = "/opt/trustsystem/storage/queue.json"
+LOCK_FILE = "/opt/trustsystem/storage/queue.lock"
+
+os.makedirs(os.path.dirname(QUEUE_FILE), exist_ok=True)
+
+lock = FileLock(LOCK_FILE, timeout=10)
 
 
 def _read():
     if not os.path.exists(QUEUE_FILE):
         return []
+
     try:
         with open(QUEUE_FILE, "r") as f:
             return json.load(f)
-    except:
+    except Exception:
         return []
 
 
 def _write(data):
     tmp = QUEUE_FILE + ".tmp"
+
     with open(tmp, "w") as f:
-        json.dump(data, f, indent=2)
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
     os.replace(tmp, QUEUE_FILE)
 
 
 def push(task: dict):
-    with LOCK:
+    with lock:
         data = _read()
         data.append({
             "task": task,
@@ -36,7 +43,7 @@ def push(task: dict):
 
 
 def pop():
-    with LOCK:
+    with lock:
         data = _read()
         if not data:
             return None
@@ -47,8 +54,13 @@ def pop():
 
 
 def requeue(item):
-    with LOCK:
-        data = _read()
+    with lock:
         item["retries"] += 1
+
+        # 🔥 защита от бесконечного цикла
+        if item["retries"] > 5:
+            return
+
+        data = _read()
         data.append(item)
         _write(data)
