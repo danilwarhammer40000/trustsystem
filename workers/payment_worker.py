@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from yookassa import Payment
 
@@ -28,7 +28,9 @@ async def worker_loop():
 
                     payment = Payment.find_one(payment_id)
 
-                    tg_id = p.get("tg_id") or (payment.metadata or {}).get("user_id")
+                    tg_id = p.get("tg_id")
+                    if not tg_id:
+                        tg_id = (payment.metadata or {}).get("user_id")
 
                     if not tg_id:
                         continue
