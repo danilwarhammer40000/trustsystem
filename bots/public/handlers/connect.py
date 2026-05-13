@@ -2,10 +2,11 @@ from aiogram import Router, types
 from services.payment_service import create_payment
 from services.public_user_service import get_or_create
 from services.user_service import activate_trial
+from core.sync import full_sync          # ← правильный импорт
 from services.vpn_card_builder import build_vpn_card
-from core.sync import sync_all_users   # или full_sync
 
 router = Router()
+
 
 @router.message(lambda m: m.text == "🚀 Подключиться")
 async def connect(message: types.Message):
@@ -20,26 +21,40 @@ async def connect(message: types.Message):
     )
     await message.answer("Выберите тариф:", reply_markup=kb)
 
+
 @router.message(lambda m: m.text in ["💳 30 дней", "💳 60 дней"])
 async def buy(message: types.Message):
     tg_id = message.from_user.id
     plan = "30" if "30" in message.text else "60"
-    get_or_create(tg_id)  # ensure user
+
+    get_or_create(tg_id)                     # ensure user exists
+
     payment = create_payment(plan, tg_id)
+
     await message.answer(
-        f"💳 Оплата: {payment['amount']} RUB\n\n"
-        f"{payment['url']}\n\n"
+        f"💳 Оплата: {payment.get('amount', 0)} RUB\n\n"
+        f"{payment.get('url', 'Ошибка создания платежа')}\n\n"
         "⏳ После оплаты VPN придёт автоматически"
     )
+
 
 @router.message(lambda m: m.text == "🎁 3 дня")
 async def trial(message: types.Message):
     tg_id = message.from_user.id
     user = get_or_create(tg_id)
+
     try:
         activate_trial(tg_id)
-        sync_all_users()
-        card = build_vpn_card(user["username"])
+        full_sync()                                   # ← исправлено
+        card = build_vpn_card(user.get("username"))
         await message.answer(card.get("text", "Триал активирован!"))
     except ValueError:
         await message.answer("❌ Триал уже использован")
+    except Exception as e:
+        await message.answer("❌ Ошибка активации триала")
+        print(f"Trial error: {e}")
+
+
+@router.message(lambda m: m.text == "⬅️ Назад")
+async def back(message: types.Message):
+    await message.answer("/start")
