@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from yookassa import Payment
 
-from services.payment_service import load, save, mark_paid, is_paid
+from services.payment_service import load, save, is_paid
 from services.control_plane import process_successful_payment
 
 logger = logging.getLogger(__name__)
@@ -19,7 +19,6 @@ async def worker_loop():
     while True:
         try:
             data = load()
-
             updated = False
 
             for p in data:
@@ -38,20 +37,37 @@ async def worker_loop():
                             logger.info(f"[TIMEOUT] {payment_id}")
                             continue
 
-                    # проверка в YooKassa
+                    # запрос в YooKassa
                     payment = Payment.find_one(payment_id)
 
                     if payment.status == "succeeded":
                         logger.info(f"[PAID] {payment_id}")
 
+                        # 🔥 достаем tg_id
+                        tg_id = p.get("tg_id")
+
+                        # fallback из metadata (на случай старых записей)
+                        if not tg_id:
+                            metadata = payment.metadata or {}
+                            tg_id = metadata.get("user_id")
+
+                        if not tg_id:
+                            logger.error(f"[NO TG_ID] payment={payment_id}")
+                            continue
+
+                        tg_id = int(tg_id)
+
+                        # 🔥 обработка (идемпотентная)
                         if not is_paid(payment_id):
                             await process_successful_payment(
-                                user_id=p.get("user_id"),
+                                user_id=tg_id,
                                 plan=p.get("plan"),
                                 payment_id=payment_id
                             )
 
-                        mark_paid(payment_id)
+                        # фиксируем локально
+                        p["status"] = "paid"
+                        p["paid_at"] = datetime.utcnow().isoformat()
                         updated = True
 
                     elif payment.status == "canceled":
