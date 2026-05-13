@@ -4,6 +4,7 @@ from datetime import datetime
 
 from config.settings import PUBLIC_BOT_TOKEN
 from services.user_service import create_user, extend_user
+from services.user_service import safe_int
 from services.payment_service import is_paid, mark_paid
 from services.vpn_card_builder import build_vpn_card
 from core.sync import full_sync, restart_trusttunnel
