@@ -4,10 +4,25 @@ After=network.target
 
 [Service]
 User=root
+
+# Корень проекта
 WorkingDirectory=/opt/trustsystem
-ExecStart=/opt/trustsystem/venv/bin/python run_worker.py
+
+# 🔥 КЛЮЧЕВОЙ ФИКС
+Environment=PYTHONPATH=/opt/trustsystem
+
+# (опционально, но полезно для логов)
+Environment=PYTHONUNBUFFERED=1
+
+# Запуск через venv
+ExecStart=/opt/trustsystem/venv/bin/python /opt/trustsystem/run_worker.py
+
 Restart=always
 RestartSec=3
+
+# чтобы systemd корректно завершал async
+KillSignal=SIGINT
+TimeoutStopSec=10
 
 [Install]
 WantedBy=multi-user.target
