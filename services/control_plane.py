@@ -6,12 +6,12 @@ from config.settings import PUBLIC_BOT_TOKEN
 from services.user_service import (
     create_user,
     extend_user,
-    get_user_by_tg,
-    get_user_by_username
+    set_user_field
 )
 
-from services.vpn_card_builder import build_vpn_card
 from services.payment_service import is_paid, mark_paid
+from services.vpn_card_builder import build_vpn_card
+
 from core.sync import full_sync, restart_trusttunnel
 
 logger = logging.getLogger(__name__)
@@ -23,6 +23,7 @@ bot = Bot(token=PUBLIC_BOT_TOKEN)
 # =========================
 
 async def process_successful_payment(user_id: int, plan: str, payment_id: str):
+
     try:
         tg_id = int(user_id)
 
@@ -31,7 +32,8 @@ async def process_successful_payment(user_id: int, plan: str, payment_id: str):
 
         user = create_user(tg_id)
         updated = extend_user(tg_id, int(plan))
-        username = updated["username"]
+
+        set_user_field(tg_id, "trial_used", True)
 
         try:
             full_sync()
@@ -39,21 +41,22 @@ async def process_successful_payment(user_id: int, plan: str, payment_id: str):
         except Exception as e:
             logger.error(f"sync error {e}")
 
-        try:
-            card = build_vpn_card(username)
-            await bot.send_message(tg_id, card["text"], parse_mode="HTML")
-        except Exception as e:
-            logger.error(f"vpn error {e}")
+        card = build_vpn_card(updated["username"])
 
-        if payment_id:
-            mark_paid(payment_id)
+        await bot.send_message(
+            chat_id=tg_id,
+            text=card["text"],
+            parse_mode="HTML"
+        )
+
+        mark_paid(payment_id)
 
     except Exception:
-        logger.exception("payment crash")
+        logger.exception(f"[PAYMENT ERROR] {payment_id}")
 
 
 # =========================
-# SYNC WRAPPER
+# SYNC
 # =========================
 
 def sync_all_users():
@@ -61,47 +64,13 @@ def sync_all_users():
         full_sync()
         restart_trusttunnel()
     except Exception as e:
-        logger.error(e)
+        logger.error(f"sync error {e}")
 
 
 # =========================
-# LEGACY HELPERS
+# LEGACY
 # =========================
-
-def get_user(username: str):
-    return get_user_by_username(username)
-
 
 def get_user_by_tg_id(tg_id: int):
+    from services.user_service import get_user_by_tg
     return get_user_by_tg(tg_id)
-
-
-def extend_user_legacy(username: str, days: int):
-    user = get_user_by_username(username)
-    return extend_user(user["telegram_id"], days)
-
-
-# =========================
-# TRIAL FIXED
-# =========================
-
-async def give_trial(tg_id: int, days: int = 1):
-    user = create_user(tg_id)
-
-    if user.get("trial_used"):
-        return
-
-    updated = extend_user(tg_id, days)
-    updated["trial_used"] = True
-
-    from services.user_service import _update_user
-    _update_user(updated)
-
-    try:
-        full_sync()
-        restart_trusttunnel()
-    except:
-        pass
-
-    card = build_vpn_card(updated["username"])
-    await bot.send_message(tg_id, card["text"], parse_mode="HTML")
