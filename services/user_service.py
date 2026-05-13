@@ -60,9 +60,6 @@ def build_username(tg_id: int) -> str:
 # =========================
 
 def get_user_by_tg(tg_id: int) -> Optional[Dict]:
-    if tg_id is None:
-        return None
-
     users = load_users()
     return next((u for u in users if u.get("telegram_id") == int(tg_id)), None)
 
@@ -77,39 +74,24 @@ def get_all_users() -> List[Dict]:
 
 
 # =========================
-# CORE CREATE / GET OR CREATE
+# CREATE (IDEMPOTENT)
 # =========================
 
 def create_user(tg_id: int) -> Dict:
-    if tg_id is None:
-        raise ValueError("tg_id is required")
-
     users = load_users()
 
-    # 1. already exists
     existing = get_user_by_tg(tg_id)
     if existing:
         return existing
 
-    username = build_username(tg_id)
-
-    # 2. legacy restore
-    for u in users:
-        if u.get("username") == username and u.get("telegram_id") is None:
-            u["telegram_id"] = int(tg_id)
-            save_users(users)
-            return u
-
-    now = datetime.utcnow()
-
     user = {
         "telegram_id": int(tg_id),
-        "username": username,
+        "username": build_username(tg_id),
         "password": generate_password(),
         "plan": "trial",
         "status": "active",
         "trial_used": False,
-        "created_at": now.isoformat(),
+        "created_at": datetime.utcnow().isoformat(),
         "expires_at": None,
     }
 
@@ -119,65 +101,41 @@ def create_user(tg_id: int) -> Dict:
 
 
 # =========================
-# UPDATE CORE (SAFE SINGLE SOURCE OF TRUTH)
+# UPDATE SINGLE SOURCE OF TRUTH
 # =========================
 
 def _update_user(user: Dict) -> Dict:
     users = load_users()
 
-    tg_id = user.get("telegram_id")
-    if tg_id is None:
-        raise ValueError("Cannot update user without telegram_id")
-
     for i, u in enumerate(users):
-        if u.get("telegram_id") == tg_id:
+        if u.get("telegram_id") == user.get("telegram_id"):
             users[i] = user
             save_users(users)
             return user
 
-    # fallback insert (rare recovery case)
     users.append(user)
     save_users(users)
     return user
 
 
 # =========================
-# TRIAL
-# =========================
-
-def activate_trial(tg_id: int, days: int = 3) -> Dict:
-    user = create_user(tg_id)
-
-    if user.get("trial_used"):
-        return user
-
-    now = datetime.utcnow()
-
-    user["trial_used"] = True
-    user["plan"] = "trial"
-    user["expires_at"] = (now + timedelta(days=days)).isoformat()
-
-    return _update_user(user)
-
-
-# =========================
-# EXTEND (MAIN LOGIC)
+# EXTEND CORE
 # =========================
 
 def extend_user(tg_id: int, days: int) -> Dict:
     user = create_user(tg_id)
 
     now = datetime.utcnow()
-    current_exp = safe_parse_date(user.get("expires_at"))
+    current = safe_parse_date(user.get("expires_at"))
 
-    if current_exp and current_exp > now:
-        new_exp = current_exp + timedelta(days=days)
+    if current and current > now:
+        new_exp = current + timedelta(days=days)
     else:
         new_exp = now + timedelta(days=days)
 
     user["expires_at"] = new_exp.isoformat()
-    user["plan"] = f"{days}d"
     user["status"] = "active"
+    user["plan"] = f"{days}d"
 
     return _update_user(user)
 
@@ -199,9 +157,8 @@ def delete_user(tg_id: int) -> bool:
 
 
 # =========================
-# LEGACY SUPPORT
+# LEGACY READ ONLY
 # =========================
 
 def get_user(username: str):
-    users = load_users()
-    return next((u for u in users if u.get("username") == username), None)
+    return get_user_by_username(username)
