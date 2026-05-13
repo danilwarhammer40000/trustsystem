@@ -18,10 +18,6 @@ logger = logging.getLogger(__name__)
 bot = Bot(token=PUBLIC_BOT_TOKEN)
 
 
-# =========================
-# PAYMENT PIPELINE
-# =========================
-
 async def process_successful_payment(user_id: int, plan: str, payment_id: str):
 
     try:
@@ -55,22 +51,9 @@ async def process_successful_payment(user_id: int, plan: str, payment_id: str):
         logger.exception(f"[PAYMENT ERROR] {payment_id}")
 
 
-# =========================
-# SYNC
-# =========================
-
 def sync_all_users():
     try:
         full_sync()
         restart_trusttunnel()
     except Exception as e:
-        logger.error(f"sync error {e}")
-
-
-# =========================
-# LEGACY
-# =========================
-
-def get_user_by_tg_id(tg_id: int):
-    from services.user_service import get_user_by_tg
-    return get_user_by_tg(tg_id)
+        logger.error(e)
