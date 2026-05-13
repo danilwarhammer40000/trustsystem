@@ -1,8 +1,7 @@
 from aiogram import Router, F, types
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from datetime import datetime
 import random
 import string
 
@@ -16,18 +15,15 @@ class AddUserStates(StatesGroup):
     waiting_tg_id = State()
     waiting_password = State()
 
-class ExtendStates(StatesGroup):
-    waiting_date = State()
-
 
 # ====================== START ======================
 @router.message(F.text == "/start")
 async def start(msg: types.Message):
-    kb = types.ReplyKeyboardMarkup(
+    kb = ReplyKeyboardMarkup(
         keyboard=[
-            ["📋 List users", "❌ Delete user"],
-            ["🔄 Sync users", "📊 Stats"],
-            ["➕ Add user"]
+            [KeyboardButton(text="📋 List users"), KeyboardButton(text="❌ Delete user")],
+            [KeyboardButton(text="🔄 Sync users"), KeyboardButton(text="📊 Stats")],
+            [KeyboardButton(text="➕ Add user")]
         ],
         resize_keyboard=True
     )
@@ -54,7 +50,7 @@ async def process_tg_id(msg: types.Message, state: FSMContext):
         [InlineKeyboardButton(text="✍️ Ввести пароль вручную", callback_data="pass:manual")]
     ])
 
-    await msg.answer(f"TG ID: <b>{tg_id}</b>\n\nВыберите пароль:", 
+    await msg.answer(f"TG ID: <b>{tg_id}</b>\n\nВыберите способ создания пароля:", 
                      reply_markup=kb, parse_mode="HTML")
 
 
@@ -133,72 +129,8 @@ async def list_users(msg: types.Message):
     await msg.answer(f"📋 Пользователи ({len(users)}):", reply_markup=kb)
 
 
-@router.callback_query(F.data.startswith("select:"))
-async def user_selected(call: types.CallbackQuery):
-    tg_id = call.data.split(":")[1]
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔗 Get Link", callback_data=f"link:{tg_id}")],
-        [InlineKeyboardButton(text="➕ +3 дня", callback_data=f"extend:{tg_id}:3")],
-        [InlineKeyboardButton(text="➕ +30 дней", callback_data=f"extend:{tg_id}:30")],
-        [InlineKeyboardButton(text="♾️ Бесконечно", callback_data=f"extend:{tg_id}:9999")],
-        [InlineKeyboardButton(text="📅 Ввести дату", callback_data=f"extend_date:{tg_id}")],
-        [InlineKeyboardButton(text="❌ Удалить", callback_data=f"del:{tg_id}")]
-    ])
-    await call.message.answer(f"Выбран пользователь {tg_id}", reply_markup=kb)
-    await call.answer()
+# (Остальные обработчики — select, link, extend, delete — можно добавить позже, если нужно)
 
-
-# ====================== GET LINK ======================
-@router.callback_query(F.data.startswith("link:"))
-async def get_link(call: types.CallbackQuery):
-    tg_id = call.data.split(":")[1]
-    card = build_vpn_card(tg_id)
-    await call.message.answer(card.get("text", "Ошибка"))
-    await call.answer()
-
-
-# ====================== EXTEND ======================
-@router.callback_query(F.data.startswith("extend:"))
-async def extend_handler(call: types.CallbackQuery):
-    _, tg_id_str, days_str = call.data.split(":")
-    tg_id = int(tg_id_str)
-    days = int(days_str)
-
-    try:
-        if days == 9999:
-            extend_user(tg_id, 9999)
-            await call.message.answer(f"✅ Бессрочный доступ выдан")
-        else:
-            extend_user(tg_id, days)
-            await call.message.answer(f"✅ Продлено на {days} дней")
-        full_sync()
-    except Exception as e:
-        await call.message.answer(f"❌ Ошибка: {e}")
-    await call.answer()
-
-
-# ====================== MANUAL DATE EXTEND ======================
-@router.callback_query(F.data.startswith("extend_date:"))
-async def extend_date_start(call: types.CallbackQuery, state: FSMContext):
-    tg_id = call.data.split(":")[1]
-    await state.update_data(tg_id=tg_id)
-    await call.message.answer("Введите дату окончания в формате ДД-ММ-ГГ (например: 31-12-26)")
-    await call.answer()
-
-
-# ====================== DELETE ======================
-@router.callback_query(F.data.startswith("del:"))
-async def delete_cb(call: types.CallbackQuery):
-    tg_id = int(call.data.split(":")[1])
-    if delete_user(tg_id):
-        full_sync()
-        await call.message.answer(f"✅ Удалён пользователь {tg_id}")
-    else:
-        await call.message.answer("Пользователь не найден")
-    await call.answer()
-
-
-# ====================== SYNC & STATS ======================
 @router.message(F.text == "🔄 Sync users")
 async def sync_users(msg: types.Message):
     full_sync()
