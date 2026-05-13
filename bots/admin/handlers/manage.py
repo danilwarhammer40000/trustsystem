@@ -9,8 +9,7 @@ from services.user_service import (
     get_all_users,
     delete_user,
     extend_user,
-    get_user_by_username,
-    set_expire
+    _update_user,
 )
 
 from services.control_plane import sync_all_users
@@ -20,61 +19,73 @@ from config.settings import DOMAIN
 router = Router()
 
 
-def format_expire(v):
-    if not v:
-        return "∞"
-    try:
-        return datetime.fromisoformat(v).strftime("%Y-%m-%d")
-    except:
-        return "∞"
+# =========================
+# LIST
+# =========================
+
+@router.message(F.text == "📋 List users")
+async def list_users(msg: Message):
+    users = get_all_users()
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=u["username"],
+                    callback_data=f"user:{u['telegram_id']}"
+                )
+            ]
+            for u in users
+        ]
+    )
+
+    await msg.answer("Users:", reply_markup=kb)
 
 
-def clean(l):
-    return (l or "").split("\n")[0]
-
-
-def card(user, link):
-    return f"👤 {user['username']}\n🔑 {user['password']}\n⏳ {format_expire(user.get('expires_at'))}\n🔗 {clean(link)}"
-
-
-@router.callback_query(F.data.startswith("days:"))
-async def add(call: CallbackQuery):
-    days = int(call.data.split(":")[1])
-    tg_id = call.from_user.id
-
-    user = create_user(tg_id)
-    user = extend_user(tg_id, days)
-
-    await asyncio.to_thread(sync_all_users)
-
-    link = generate_link(user["username"], DOMAIN)
-
-    await call.message.answer(card(user, link))
-    await call.answer()
-
+# =========================
+# EXTEND
+# =========================
 
 @router.callback_query(F.data.startswith("ext:"))
 async def ext(call: CallbackQuery):
-    _, username, days = call.data.split(":")
+    _, tg_id, days = call.data.split(":")
 
-    user = get_user_by_username(username)
+    updated = extend_user(int(tg_id), int(days))
+
+    await asyncio.to_thread(sync_all_users)
+
+    await call.message.answer(
+        f"{updated['username']}\n{updated.get('expires_at')}"
+    )
+
+
+# =========================
+# GET LINK (FIXED)
+# =========================
+
+@router.callback_query(F.data.startswith("link:"))
+async def link(call: CallbackQuery):
+    tg_id = int(call.data.split(":")[1])
+
+    user = next((u for u in get_all_users() if u["telegram_id"] == tg_id), None)
     if not user:
         return await call.message.answer("not found")
 
-    updated = extend_user(user["telegram_id"], int(days))
+    link = generate_link(user["username"], DOMAIN)
 
-    await asyncio.to_thread(sync_all_users)
+    await call.message.answer(link)
 
-    await call.message.answer(f"{username}\n{format_expire(updated.get('expires_at'))}")
 
+# =========================
+# DELETE
+# =========================
 
 @router.callback_query(F.data.startswith("del:"))
 async def delete(call: CallbackQuery):
-    username = call.data.split(":")[1]
+    tg_id = int(call.data.split(":")[1])
 
-    user = get_user_by_username(username)
-    if user:
-        delete_user(user["telegram_id"])
+    delete_user(tg_id)
 
     await asyncio.to_thread(sync_all_users)
+
     await call.message.answer("deleted")
