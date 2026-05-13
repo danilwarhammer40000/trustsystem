@@ -13,6 +13,13 @@ os.makedirs(os.path.dirname(LOCK_PATH), exist_ok=True)
 lock = FileLock(LOCK_PATH, timeout=20)
 
 
+def _safe_parse(dt: str):
+    try:
+        return datetime.fromisoformat(dt)
+    except Exception:
+        return None
+
+
 def full_sync():
     with lock:
         users = load_users()
@@ -21,29 +28,38 @@ def full_sync():
         changed = False
 
         for u in users:
-            if u.get("status") != "active":
-                continue
-
             exp = u.get("expires_at")
+
+            # нет даты — пропускаем
             if not exp:
                 continue
 
-            try:
-                exp_dt = datetime.fromisoformat(exp)
+            exp_dt = _safe_parse(exp)
+            if not exp_dt:
+                logging.error(f"[SYNC] bad date: {exp}")
+                continue
 
-                if exp_dt < now:
+            # 🔥 EXPIRE
+            if exp_dt < now:
+                if u.get("status") != "inactive":
                     u["status"] = "inactive"
                     changed = True
+                continue
 
-            except Exception as e:
-                logging.error(f"[SYNC] date parse error: {e}")
+            # 🔥 RE-ACTIVATE (ВАЖНО)
+            if exp_dt > now:
+                if u.get("status") != "active":
+                    u["status"] = "active"
+                    changed = True
 
         if changed:
             save_users(users)
             logging.info("[SYNC] users updated")
 
-        rebuild_credentials_from_db(users)
-        logging.info("[SYNC] credentials rebuilt")
+        # rebuild только если есть пользователи
+        if users:
+            rebuild_credentials_from_db(users)
+            logging.info("[SYNC] credentials rebuilt")
 
 
 def restart_trusttunnel():
