@@ -6,9 +6,7 @@ from config.settings import PUBLIC_BOT_TOKEN
 from services.user_service import (
     create_user,
     extend_user,
-    get_user_by_tg,
-    get_all_users,
-    save_users
+    get_user_by_tg
 )
 
 from services.vpn_card_builder import build_vpn_card
@@ -21,7 +19,7 @@ bot = Bot(token=PUBLIC_BOT_TOKEN)
 
 
 # =========================================
-# 💳 ОСНОВНОЙ ФЛОУ (WEBHOOK)
+# 💳 PAYMENT PIPELINE (CLEAN TG-ID ONLY)
 # =========================================
 
 async def process_successful_payment(
@@ -30,35 +28,33 @@ async def process_successful_payment(
     payment_id: str
 ) -> None:
     try:
-        logger.info(f"[WEBHOOK] payment={payment_id} user={user_id} plan={plan}")
-
         tg_id = int(user_id)
 
-        # 1. идемпотентность
+        logger.info(f"[WEBHOOK] payment={payment_id} user={tg_id} plan={plan}")
+
+        # 1. idempotency
         if payment_id and is_paid(payment_id):
             logger.info(f"[SKIP] already processed {payment_id}")
             return
 
-        # 2. user
+        # 2. ensure user exists
         user = create_user(tg_id)
 
-        # 3. план
+        # 3. extend
         days = int(plan)
-
-        # 4. продление
-        updated_user = extend_user(tg_id, days)
-        username = updated_user.get("username")
+        updated = extend_user(tg_id, days)
+        username = updated["username"]
 
         logger.info(f"[OK] extended {username} for {days} days")
 
-        # 5. sync
+        # 4. sync system
         try:
             full_sync()
             restart_trusttunnel()
         except Exception as e:
             logger.error(f"[SYNC ERROR] {e}")
 
-        # 6. VPN
+        # 5. send vpn card
         try:
             card = build_vpn_card(username)
 
@@ -70,7 +66,7 @@ async def process_successful_payment(
         except Exception as e:
             logger.error(f"[VPN ERROR] {e}")
 
-        # 7. mark paid
+        # 6. mark payment
         if payment_id:
             mark_paid(payment_id)
 
@@ -81,50 +77,47 @@ async def process_successful_payment(
 
 
 # =========================================
-# 🔄 SYNC
+# 🔄 SYNC WRAPPER
 # =========================================
 
 def sync_all_users():
     try:
         full_sync()
         restart_trusttunnel()
-        logger.info("[SYNC] all users synced")
+        logger.info("[SYNC] completed")
     except Exception as e:
         logger.error(f"[SYNC ERROR] {e}")
 
 
 # =========================================
-# 👤 USER OPERATIONS (LEGACY COMPAT)
+# 👤 LEGACY HELPERS (READ ONLY)
 # =========================================
 
-def extend_user_legacy(username: str, days: int):
-    users = get_all_users()
-
-    for u in users:
-        if u.get("username") == username:
-            tg_id = u.get("telegram_id")
-            if tg_id:
-                return extend_user(int(tg_id), days)
-
-    raise ValueError("User not found")
-
-
 def get_user(username: str):
-    users = get_all_users()
-
-    for u in users:
-        if u.get("username") == username:
-            return u
-
-    return None
+    from services.user_service import get_user_by_username
+    return get_user_by_username(username)
 
 
 def get_user_by_tg_id(tg_id: int):
-    return get_user_by_tg(int(tg_id))
+    return get_user_by_tg(tg_id)
+
+
+def extend_user_legacy(username: str, days: int):
+    from services.user_service import get_user_by_username
+
+    user = get_user_by_username(username)
+    if not user:
+        raise ValueError("User not found")
+
+    tg_id = user.get("telegram_id")
+    if not tg_id:
+        raise ValueError("User has no telegram_id")
+
+    return extend_user(int(tg_id), days)
 
 
 # =========================================
-# 🎁 TRIAL
+# 🎁 TRIAL (FIXED)
 # =========================================
 
 async def give_trial(tg_id: int, days: int = 1):
@@ -137,27 +130,21 @@ async def give_trial(tg_id: int, days: int = 1):
             logger.info(f"[TRIAL] already used {tg_id}")
             return
 
-        updated_user = extend_user(tg_id, days)
-        updated_user["trial_used"] = True
+        updated = extend_user(tg_id, days)
+        updated["trial_used"] = True
 
-        # сохранить флаг
-        users = get_all_users()
-        for i, u in enumerate(users):
-            if u.get("telegram_id") == tg_id:
-                users[i] = updated_user
-                break
-        save_users(users)
+        # persist trial flag via service layer (IMPORTANT FIX)
+        from services.user_service import _update_user
+        _update_user(updated)
 
-        username = updated_user.get("username")
+        username = updated["username"]
 
-        # sync
         try:
             full_sync()
             restart_trusttunnel()
         except Exception as e:
             logger.error(f"[SYNC ERROR] {e}")
 
-        # vpn
         try:
             card = build_vpn_card(username)
 
@@ -169,25 +156,7 @@ async def give_trial(tg_id: int, days: int = 1):
         except Exception as e:
             logger.error(f"[VPN ERROR] {e}")
 
-        logger.info(f"[TRIAL] {tg_id} got {days} days")
+        logger.info(f"[TRIAL] {tg_id} granted {days} days")
 
     except Exception:
         logger.exception(f"[TRIAL ERROR] {tg_id}")
-
-
-# =========================================
-# 🔧 ADMIN
-# =========================================
-
-def set_expire(username: str, expires_at: str):
-    users = get_all_users()
-
-    for u in users:
-        if u.get("username") == username:
-            u["expires_at"] = expires_at
-            u["status"] = "active"
-
-            save_users(users)
-            return u
-
-    raise ValueError("User not found")
